@@ -79,7 +79,9 @@ app.post('/api/attendance', (req, res) => {
         const saveAttendance = (user) => {
           const uploadsDir = path.join(__dirname, 'uploads');
           let fileName = null;
-          if (image && SAVE_IMAGES) {
+          const uidForFile = (user && user.id) ? user.id : 'unknown';
+          // Save image when provided. If embedding was not provided (image-only), always save; otherwise respect SAVE_IMAGES flag
+          if (image && (SAVE_IMAGES || !embedding)) {
             try {
               const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
               let data = image;
@@ -89,12 +91,88 @@ app.post('/api/attendance', (req, res) => {
                 data = matches[2];
               }
               if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-              fileName = `${Date.now()}_${user.id}.${ext}`;
+              fileName = `${Date.now()}_${uidForFile}.${ext}`;
               fs.writeFileSync(path.join(uploadsDir, fileName), Buffer.from(data, 'base64'));
             } catch (e) {
               console.warn('Failed to save image:', e.message);
             }
           }
+
+          const userIdParam = (user && user.id) ? user.id : null;
+          db.run('INSERT INTO Attendance (user_id, timestamp, device_id, image_path) VALUES (?, ?, ?, ?)',
+            [userIdParam, timestamp, device_id || 'device-unknown', fileName], function (err) {
+              if (err) {
+                console.error(err);
+                return res.status(500).json({ error: 'db error' });
+              }
+              const payload = {
+                name: (user && user.name) ? user.name : 'Unknown',
+                time: timestamp,
+                device_id: device_id || 'device-unknown'
+              };
+              if (image && (SAVE_IMAGES || !embedding) && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
+              io.emit('attendance', payload);
+              res.json({ success: true, attendanceId: this.lastID, user: (user && user.id) ? user : null, matched: best && best.distance <= EMBEDDING_THRESHOLD, distance: best ? best.distance : null });
+            });
+        };
+
+        if (best && best.distance <= EMBEDDING_THRESHOLD) {
+          // matched existing user
+          saveAttendance({ id: best.id, name: best.name });
+        } else {
+          // No match: do NOT auto-create new Users from frontend scans
+          // Create only if client explicitly provided a name
+          if (name) {
+            const userName = name || 'Unknown';
+            db.run('INSERT INTO Users (name, face_embedding) VALUES (?, ?)', [userName, JSON.stringify(embedding)], function (err) {
+              if (err) {
+                console.error(err);
+                return res.status(500).json({ error: 'db error' });
+              }
+              saveAttendance({ id: this.lastID, name: userName });
+            });
+          } else {
+            saveAttendance({ id: null, name: 'Unknown' });
+          }
+        }
+      });
+    }
+
+    // Fallback: image-only (legacy MD5 behavior)
+    if (!embedding) {
+      if (!image) return res.status(400).json({ error: 'image or embedding required' });
+
+      const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
+      let ext = 'png';
+      let data = image;
+      if (matches) {
+        ext = matches[1].split('/')[1];
+        data = matches[2];
+      }
+      const buffer = Buffer.from(data, 'base64');
+
+      const hash = crypto.createHash('md5').update(buffer).digest('hex');
+
+      db.get('SELECT id, name FROM Users WHERE face_hash = ?', [hash], (err, row) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ error: 'db error' });
+        }
+
+        const ensureUser = new Promise((resolve, reject) => {
+          if (row) return resolve({ id: row.id, name: row.name });
+          const userName = name || 'Unknown';
+          db.run('INSERT INTO Users (name, face_hash) VALUES (?, ?)', [userName, hash], function (err) {
+            if (err) return reject(err);
+            resolve({ id: this.lastID, name: userName });
+          });
+        });
+
+        ensureUser.then((user) => {
+          const uploadsDir = path.join(__dirname, 'uploads');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const fileName = `${Date.now()}_${user.id}.${ext}`;
+          fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
 
           db.run('INSERT INTO Attendance (user_id, timestamp, device_id, image_path) VALUES (?, ?, ?, ?)',
             [user.id, timestamp, device_id || 'device-unknown', fileName], function (err) {
@@ -105,87 +183,19 @@ app.post('/api/attendance', (req, res) => {
               const payload = {
                 name: user.name,
                 time: timestamp,
+                image: `data:image/${ext};base64,${data}`,
                 device_id: device_id || 'device-unknown'
               };
-              if (image && SAVE_IMAGES && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
               io.emit('attendance', payload);
-              res.json({ success: true, attendanceId: this.lastID, user, matched: best && best.distance <= EMBEDDING_THRESHOLD, distance: best ? best.distance : null });
+              res.json({ success: true, attendanceId: this.lastID, user });
             });
-        };
-
-        if (best && best.distance <= EMBEDDING_THRESHOLD) {
-          // matched existing user
-          saveAttendance({ id: best.id, name: best.name });
-        } else {
-          // create new user with embedding
-          const userName = name || 'Unknown';
-          db.run('INSERT INTO Users (name, face_embedding) VALUES (?, ?)', [userName, JSON.stringify(embedding)], function (err) {
-            if (err) {
-              console.error(err);
-              return res.status(500).json({ error: 'db error' });
-            }
-            saveAttendance({ id: this.lastID, name: userName });
-          });
-        }
+        }).catch((err) => {
+          console.error(err);
+          res.status(500).json({ error: 'db error' });
+        });
       });
       return;
     }
-
-    // Fallback: image-only (legacy MD5 behavior)
-    if (!image) return res.status(400).json({ error: 'image or embedding required' });
-
-    const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
-    let ext = 'png';
-    let data = image;
-    if (matches) {
-      ext = matches[1].split('/')[1];
-      data = matches[2];
-    }
-    const buffer = Buffer.from(data, 'base64');
-
-    const hash = crypto.createHash('md5').update(buffer).digest('hex');
-
-    db.get('SELECT id, name FROM Users WHERE face_hash = ?', [hash], (err, row) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: 'db error' });
-      }
-
-      const ensureUser = new Promise((resolve, reject) => {
-        if (row) return resolve({ id: row.id, name: row.name });
-        const userName = name || 'Unknown';
-        db.run('INSERT INTO Users (name, face_hash) VALUES (?, ?)', [userName, hash], function (err) {
-          if (err) return reject(err);
-          resolve({ id: this.lastID, name: userName });
-        });
-      });
-
-      ensureUser.then((user) => {
-        const uploadsDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-        const fileName = `${Date.now()}_${user.id}.${ext}`;
-        fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
-
-        db.run('INSERT INTO Attendance (user_id, timestamp, device_id, image_path) VALUES (?, ?, ?, ?)',
-          [user.id, timestamp, device_id || 'device-unknown', fileName], function (err) {
-            if (err) {
-              console.error(err);
-              return res.status(500).json({ error: 'db error' });
-            }
-            const payload = {
-              name: user.name,
-              time: timestamp,
-              image: `data:image/${ext};base64,${data}`,
-              device_id: device_id || 'device-unknown'
-            };
-            io.emit('attendance', payload);
-            res.json({ success: true, attendanceId: this.lastID, user });
-          });
-      }).catch((err) => {
-        console.error(err);
-        res.status(500).json({ error: 'db error' });
-      });
-    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'server error' });
@@ -195,19 +205,19 @@ app.post('/api/attendance', (req, res) => {
 app.get('/api/attendance', (req, res) => {
   let q;
   if (process.env.USE_SQL_SERVER === 'true' || process.env.USE_SQL_SERVER === '1') {
-    q = `SELECT TOP (100) Attendance.id, Users.name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
-         FROM Attendance JOIN Users ON Attendance.user_id = Users.id
+    q = `SELECT TOP (100) Attendance.id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
+         FROM Attendance LEFT JOIN Users ON Attendance.user_id = Users.id
          ORDER BY Attendance.timestamp DESC`;
   } else {
-    q = `SELECT Attendance.id, Users.name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
-         FROM Attendance JOIN Users ON Attendance.user_id = Users.id
+    q = `SELECT Attendance.id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
+         FROM Attendance LEFT JOIN Users ON Attendance.user_id = Users.id
          ORDER BY Attendance.timestamp DESC LIMIT 100`;
   }
   db.all(q, [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'db error' });
     const result = rows.map(r => ({
       id: r.id,
-      name: r.name,
+      name: r.name || 'Unknown',
       time: r.timestamp,
       image: r.image_path ? `/uploads/${r.image_path}` : null,
       device_id: r.device_id

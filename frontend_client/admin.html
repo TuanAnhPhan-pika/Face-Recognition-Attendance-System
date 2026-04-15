@@ -23,6 +23,22 @@
   <div class="controls">
     <button id="refresh">Lấy danh sách users</button>
     <button id="loadAttendance">Tải lịch sử điểm danh</button>
+    <button id="addEmployee" style="margin-left:12px">Thêm nhân viên</button>
+  </div>
+
+  <div id="capturePanel" style="display:none;margin-top:12px;border:1px solid #ddd;padding:12px">
+    <h3>Đăng ký nhân viên mới</h3>
+    <div>
+      <label>Tên: <input id="newName" placeholder="Tên nhân viên" style="width:220px" /></label>
+      <button id="startCapture">Bắt đầu capture</button>
+      <button id="cancelCapture">Huỷ</button>
+    </div>
+    <div style="margin-top:8px; position:relative; display:inline-block;">
+        <video id="capVideo" autoplay playsinline width="320" height="240" style="border:1px solid #ccc; display:block"></video>
+        <div id="countdown" style="position:absolute;left:0;top:0;width:320px;height:240px;display:none;align-items:center;justify-content:center;font-size:72px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.8);pointer-events:none"></div>
+        <canvas id="capCanvas" width="320" height="240" style="display:none"></canvas>
+        <div id="capLog" style="margin-top:6px;color:#333"></div>
+      </div>
   </div>
 
   <div id="log" style="margin-top:8px;color:#333"></div>
@@ -71,6 +87,71 @@
         if (res.ok) { log.innerText = 'Xoá thành công'; refreshUsers(); } else log.innerText = 'Lỗi: ' + JSON.stringify(j);
       } catch (err) { log.innerText = 'Lỗi kết nối: ' + err.message; }
     }
+
+    // --- Admin single-shot capture for adding users ---
+    const addBtn = document.getElementById('addEmployee');
+    const capturePanel = document.getElementById('capturePanel');
+    const startCaptureBtn = document.getElementById('startCapture');
+    const cancelCaptureBtn = document.getElementById('cancelCapture');
+    const capVideo = document.getElementById('capVideo');
+    const capCanvas = document.getElementById('capCanvas');
+    const capLog = document.getElementById('capLog');
+    let capStream = null;
+
+    addBtn.addEventListener('click', () => {
+      capturePanel.style.display = 'block';
+      capLog.innerText = '';
+      document.getElementById('newName').focus();
+    });
+
+    cancelCaptureBtn.addEventListener('click', () => {
+      if (capStream) { capStream.getTracks().forEach(t => t.stop()); capStream = null; }
+      capturePanel.style.display = 'none';
+    });
+
+    startCaptureBtn.addEventListener('click', async () => {
+      const backend = backendInput.value.trim();
+      const name = document.getElementById('newName').value.trim();
+      if (!name) { capLog.innerText = 'Vui lòng nhập tên nhân viên.'; return; }
+      try {
+          capLog.innerText = 'Đang mở camera...';
+          startCaptureBtn.disabled = true;
+          capStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          capVideo.srcObject = capStream;
+          await new Promise(resolve => capVideo.onloadedmetadata = resolve);
+          // 5s countdown before capture
+          const countdownEl = document.getElementById('countdown');
+          countdownEl.style.display = 'flex';
+          for (let i = 5; i >= 1; i--) {
+            countdownEl.innerText = i;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          countdownEl.style.display = 'none';
+          // capture single frame
+          const ctx = capCanvas.getContext('2d');
+          capCanvas.width = capVideo.videoWidth || 320; capCanvas.height = capVideo.videoHeight || 240;
+          ctx.drawImage(capVideo, 0, 0, capCanvas.width, capCanvas.height);
+          // stop camera
+          capStream.getTracks().forEach(t => t.stop()); capStream = null;
+          const dataUrl = capCanvas.toDataURL('image/jpeg', 0.9);
+          capLog.innerText = 'Đang gửi ảnh để tạo user...';
+          const res = await fetch(backend + '/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, image: dataUrl, device_id: 'admin-capture-01' }) });
+          const j = await res.json();
+          if (res.ok) {
+            capLog.innerText = 'Tạo nhân viên thành công.';
+            refreshUsers();
+          } else {
+            capLog.innerText = 'Lỗi: ' + (j && j.error ? j.error : JSON.stringify(j));
+          }
+          startCaptureBtn.disabled = false;
+          // hide panel after brief message
+          setTimeout(() => { capturePanel.style.display = 'none'; document.getElementById('newName').value = ''; }, 1200);
+        } catch (err) {
+          capLog.innerText = 'Lỗi camera/gửi: ' + err.message;
+          if (capStream) { capStream.getTracks().forEach(t => t.stop()); capStream = null; }
+          startCaptureBtn.disabled = false;
+        }
+    });
 
     async function loadAttendance() {
       const backend = backendInput.value.trim();
