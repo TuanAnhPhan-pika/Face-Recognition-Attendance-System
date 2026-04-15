@@ -1,4 +1,5 @@
 Face Recognition Attendance System (Mô phỏng Local)
+
 📌 Giới thiệu
 
 Đây là dự án mô phỏng hệ thống điểm danh bằng nhận diện khuôn mặt với kiến trúc tách biệt 3 máy:
@@ -7,10 +8,12 @@ Face Recognition Attendance System (Mô phỏng Local)
 💻 Laptop 2 (Backend + Database - Cloud giả lập): Xử lý & lưu dữ liệu
 💻 Laptop 3 (Frontend Client): Hiển thị kết quả realtime
 🧱 Kiến trúc hệ thống
+
 [Camera Client] ---> [Backend + DB] ---> [Frontend Client]
         │                    │                   │
         └──── HTTP API ──────┘                   │
                              └── WebSocket ─────┘
+
 🔄 Luồng hoạt động
 Camera quét khuôn mặt người dùng
 Gửi dữ liệu (ảnh hoặc embedding) lên Backend
@@ -19,7 +22,9 @@ Nếu match:
 Lưu vào database
 Gửi sự kiện realtime sang Frontend
 Frontend hiển thị người vừa điểm danh
+
 ⚙️ Công nghệ sử dụng
+
 Backend
 Node.js (Express)
 Socket.io (Realtime)
@@ -29,6 +34,7 @@ ReactJS
 Socket.io-client
 Camera Client
 Web (React + webcam) hoặc Python (OpenCV)
+
 🗄️ Database Schema
 Users
 CREATE TABLE Users (
@@ -44,6 +50,7 @@ CREATE TABLE Attendance (
     device_id NVARCHAR(50),
     FOREIGN KEY (user_id) REFERENCES Users(id)
 );
+
 🌐 API
 Điểm danh
 POST /api/attendance
@@ -61,6 +68,7 @@ GET /api/attendance
 Server → Client
 attendance
 
+
 Payload:
 
 {
@@ -68,6 +76,7 @@ Payload:
   "time": "2026-04-15T08:00:00",
   "image": "..."
 }
+
 🖥️ Setup hệ thống
 🟢 Backend + DB (Laptop 2)
 npm install
@@ -75,10 +84,12 @@ npm run dev
 Chạy SQL Server
 Import database
 Mở port (vd: 3000)
+
 🔵 Camera Client (Laptop 1)
 Mở webcam
 Gửi request về backend:
 http://<BACKEND_IP>:3000/api/attendance
+
 🟡 Frontend (Laptop 3)
 npm install
 npm start
@@ -97,6 +108,7 @@ Chạy backend
 Chạy frontend
 Mở camera
 Đưa mặt vào camera
+
 
 👉 Kết quả:
 
