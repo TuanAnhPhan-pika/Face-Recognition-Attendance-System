@@ -7,7 +7,9 @@ Face Recognition Attendance System (Mô phỏng Local)
 💻 Laptop 1 (Camera Client): Quét khuôn mặt
 💻 Laptop 2 (Backend + Database - Cloud giả lập): Xử lý & lưu dữ liệu
 💻 Laptop 3 (Frontend Client): Hiển thị kết quả realtime
+
 🧱 Kiến trúc hệ thống
+
 
 [Camera Client] ---> [Backend + DB] ---> [Frontend Client]
         │                    │                   │
