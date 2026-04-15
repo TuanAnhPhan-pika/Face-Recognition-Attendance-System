@@ -12,9 +12,8 @@ Face Recognition Attendance System (Mô phỏng Local)
 
 [Camera Client] ---> [Backend + DB] ---> [Frontend Client]
       
-│                    │                   │
-        └──── HTTP API ──────┘                   │
-                             └── WebSocket ─────┘
+                                   
+└──── HTTP API ──────┘       └── WebSocket ─────┘
 
 🔄 Luồng hoạt động
 Camera quét khuôn mặt người dùng
