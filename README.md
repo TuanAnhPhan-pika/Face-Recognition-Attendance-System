@@ -11,7 +11,8 @@ Face Recognition Attendance System (Mô phỏng Local)
 🧱 Kiến trúc hệ thống
 
 [Camera Client] ---> [Backend + DB] ---> [Frontend Client]
-        │                    │                   │
+      
+│                    │                   │
         └──── HTTP API ──────┘                   │
                              └── WebSocket ─────┘
 
