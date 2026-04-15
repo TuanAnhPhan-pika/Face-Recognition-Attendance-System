@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin - Face Recognition Attendance</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;padding:16px}
+    input,button{margin:4px}
+    img{max-width:160px;border:1px solid #ddd}
+    .user{border:1px solid #eee;padding:8px;margin:6px 0;display:flex;justify-content:space-between}
+    .controls{margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <h2>Admin - Quản lý Users</h2>
+  <div class="controls">
+    <label>Backend URL: <input id="backend" value="http://localhost:3000" style="width:300px" /></label>
+    <label style="margin-left:12px">Admin Token: <input id="token" placeholder="x-admin-token" style="width:200px" /></label>
+    <input type="hidden" id="modelPath" value="/frontend/models" />
+  </div>
+
+  <div class="controls">
+    <button id="refresh">Lấy danh sách users</button>
+    <button id="loadAttendance">Tải lịch sử điểm danh</button>
+  </div>
+
+  <div id="log" style="margin-top:8px;color:#333"></div>
+
+  <h3>Users</h3>
+  <div id="users"></div>
+
+  <h3>Lịch sử điểm danh</h3>
+  <div id="attendanceList"></div>
+
+  <script>
+    const backendInput = document.getElementById('backend');
+    const tokenInput = document.getElementById('token');
+    const refreshBtn = document.getElementById('refresh');
+    const loadAttendanceBtn = document.getElementById('loadAttendance');
+    const log = document.getElementById('log');
+    const usersDiv = document.getElementById('users');
+    const attendanceDiv = document.getElementById('attendanceList');
+
+    refreshBtn.addEventListener('click', refreshUsers);
+    loadAttendanceBtn.addEventListener('click', loadAttendance);
+
+    async function refreshUsers() {
+      const backend = backendInput.value.trim();
+      const token = tokenInput.value.trim();
+      try {
+        const res = await fetch(backend + '/api/users', { headers: { 'x-admin-token': token } });
+        if (!res.ok) { const t = await res.text(); log.innerText = 'Lỗi tải users: ' + t; return; }
+        const data = await res.json();
+        usersDiv.innerHTML = '';
+        data.forEach(u => {
+          const d = document.createElement('div'); d.className = 'user';
+          const info = document.createElement('div'); info.innerText = `${u.id} — ${u.name}`;
+          const del = document.createElement('button'); del.innerText = 'Xoá'; del.addEventListener('click', () => deleteUser(u.id));
+          d.appendChild(info); d.appendChild(del); usersDiv.appendChild(d);
+        });
+      } catch (err) { log.innerText = 'Lỗi kết nối: ' + err.message; }
+    }
+
+    async function deleteUser(id) {
+      const backend = backendInput.value.trim(); const token = tokenInput.value.trim();
+      if (!confirm('Xoá user ' + id + ' ?')) return;
+      try {
+        const res = await fetch(backend + '/api/users/' + id, { method: 'DELETE', headers: { 'x-admin-token': token } });
+        const j = await res.json();
+        if (res.ok) { log.innerText = 'Xoá thành công'; refreshUsers(); } else log.innerText = 'Lỗi: ' + JSON.stringify(j);
+      } catch (err) { log.innerText = 'Lỗi kết nối: ' + err.message; }
+    }
+
+    async function loadAttendance() {
+      const backend = backendInput.value.trim();
+      try {
+        const res = await fetch(backend + '/api/attendance');
+        if (!res.ok) { log.innerText = 'Lỗi tải lịch sử: ' + await res.text(); return; }
+        const data = await res.json();
+        attendanceDiv.innerHTML = '';
+        data.forEach(a => {
+          const d = document.createElement('div'); d.className = 'user';
+          const left = document.createElement('div');
+          left.innerHTML = `<strong>${a.name}</strong><br/><small>${a.time}</small><br/><small>Device: ${a.device_id || ''}</small>`;
+          const right = document.createElement('div');
+          if (a.image) { const img = document.createElement('img'); img.src = a.image.startsWith('/') ? backend + a.image : a.image; img.style.maxWidth='120px'; right.appendChild(img); }
+          d.appendChild(left); d.appendChild(right); attendanceDiv.appendChild(d);
+        });
+      } catch (err) { log.innerText = 'Lỗi kết nối: ' + err.message; }
+    }
+  </script>
+</body>
+</html>
