@@ -1,3 +1,11 @@
-face_recognition
-opencv-python
-requests
+# Camera Client Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core face recognition library
+face_recognition>=1.4.0
+
+# Computer vision and image processing
+opencv-python>=4.8.0
+
+# HTTP requests for sending embeddings to backend
+requests>=2.31.0

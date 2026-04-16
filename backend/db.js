@@ -38,26 +38,49 @@ if (!USE_SQL_SERVER) {
   module.exports = db;
 } else {
   // SQL Server implementation that exposes sqlite-like API: all/get/run(callback)
-  const sql = require('mssql');
+  // Windows Authentication only (msnodesqlv8).
+  const sql = require('mssql/msnodesqlv8');
 
-  const config = {
-    user: process.env.MSSQL_USER || process.env.SQL_USER || 'sa',
-    password: process.env.MSSQL_PASSWORD || process.env.SQL_PASSWORD || '',
-    server: process.env.MSSQL_SERVER || process.env.SQL_SERVER || 'localhost',
-    database: process.env.MSSQL_DATABASE || process.env.SQL_DATABASE || 'fra_db',
-    port: parseInt(process.env.MSSQL_PORT || process.env.SQL_PORT || '1433', 10),
-    options: {
-      encrypt: (process.env.MSSQL_ENCRYPT === 'true'),
-      trustServerCertificate: (process.env.MSSQL_TRUST === 'true' || process.env.MSSQL_TRUST === undefined)
+  const rawServer = process.env.MSSQL_SERVER || 'localhost';
+  const databaseName = process.env.MSSQL_DATABASE || 'fra_db';
+
+  function buildConnectionString(driverName) {
+    const encrypt = (process.env.MSSQL_ENCRYPT === 'true') ? 'Yes' : 'No';
+    const trust = (process.env.MSSQL_TRUST === 'true') ? 'Yes' : 'No';
+    return `Driver={${driverName}};Server=${rawServer};Database=${databaseName};Trusted_Connection=Yes;Encrypt=${encrypt};TrustServerCertificate=${trust};`;
+  }
+
+  async function connectWithFallback() {
+    const candidates = [
+      buildConnectionString('ODBC Driver 17 for SQL Server'),
+      buildConnectionString('SQL Server Native Client 11.0')
+    ];
+
+    let lastError;
+    for (const cs of candidates) {
+      try {
+        const pool = await sql.connect({ connectionString: cs });
+        console.log(`MSSQL connected (Windows Auth): ${rawServer}/${databaseName}`);
+        return pool;
+      } catch (err) {
+        lastError = err;
+      }
     }
-  };
+    throw lastError;
+  }
 
-  const poolPromise = new sql.ConnectionPool(config).connect();
+  const poolPromise = connectWithFallback();
 
   function replacePlaceholders(q) {
     let idx = 0;
     const text = q.replace(/\?/g, () => '@p' + (++idx));
     return { text, count: idx };
+  }
+
+  function toSqlLiteral(value) {
+    if (value === null || value === undefined) return 'NULL';
+    const text = String(value).replace(/'/g, "''");
+    return `'${text}'`;
   }
 
   async function ensureSchema() {
@@ -125,11 +148,11 @@ if (!USE_SQL_SERVER) {
       try {
         const pool = await poolPromise;
         const isInsert = /^\s*INSERT\b/i.test(sqlQuery);
-        let { text, count } = replacePlaceholders(sqlQuery);
-        if (isInsert) text = text + '; SELECT SCOPE_IDENTITY() AS id;';
-        const request = pool.request();
-        for (let i = 1; i <= count; i++) request.input('p' + i, sql.NVarChar(sql.MAX), (params && params[i-1] != null) ? params[i-1].toString() : null);
-        const result = await request.query(text);
+        const values = Array.isArray(params) ? params : [];
+        let index = 0;
+        let text = sqlQuery.replace(/\?/g, () => toSqlLiteral(values[index++]));
+        if (isInsert) text = text.replace(/\)\s*VALUES/i, ') OUTPUT INSERTED.id VALUES');
+        const result = await pool.request().query(text);
         const ctx = {};
         if (isInsert && result.recordset && result.recordset[0]) {
           const idVal = result.recordset[0].id || Object.values(result.recordset[0])[0];

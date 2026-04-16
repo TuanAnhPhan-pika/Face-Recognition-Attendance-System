@@ -49,6 +49,7 @@
   <h3>Lịch sử điểm danh</h3>
   <div id="attendanceList"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script>
     const backendInput = document.getElementById('backend');
     const tokenInput = document.getElementById('token');
@@ -57,6 +58,7 @@
     const log = document.getElementById('log');
     const usersDiv = document.getElementById('users');
     const attendanceDiv = document.getElementById('attendanceList');
+    const MODEL_PATHS = ['/frontend/models', 'https://justadudewhohacks.github.io/face-api.js/models'];
 
     refreshBtn.addEventListener('click', refreshUsers);
     loadAttendanceBtn.addEventListener('click', loadAttendance);
@@ -98,6 +100,24 @@
     const capLog = document.getElementById('capLog');
     let capStream = null;
 
+    async function loadModels() {
+      try {
+        const already = faceapi && faceapi.nets && faceapi.nets.tinyFaceDetector && faceapi.nets.tinyFaceDetector.params;
+        if (already) return true;
+      } catch (e) {}
+      for (const p of MODEL_PATHS) {
+        try {
+          await faceapi.nets.tinyFaceDetector.loadFromUri(p);
+          await faceapi.nets.faceLandmark68Net.loadFromUri(p);
+          await faceapi.nets.faceRecognitionNet.loadFromUri(p);
+          return true;
+        } catch (e) {
+          console.warn('load failed', p, e);
+        }
+      }
+      return false;
+    }
+
     addBtn.addEventListener('click', () => {
       capturePanel.style.display = 'block';
       capLog.innerText = '';
@@ -114,6 +134,13 @@
       const name = document.getElementById('newName').value.trim();
       if (!name) { capLog.innerText = 'Vui lòng nhập tên nhân viên.'; return; }
       try {
+          capLog.innerText = 'Đang tải mô hình nhận diện...';
+          const modelsOk = await loadModels();
+          if (!modelsOk) {
+            capLog.innerText = 'Không tải được face-api models.';
+            startCaptureBtn.disabled = false;
+            return;
+          }
           capLog.innerText = 'Đang mở camera...';
           startCaptureBtn.disabled = true;
           capStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -133,9 +160,16 @@
           ctx.drawImage(capVideo, 0, 0, capCanvas.width, capCanvas.height);
           // stop camera
           capStream.getTracks().forEach(t => t.stop()); capStream = null;
+          const detection = await faceapi.detectSingleFace(capCanvas, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+          if (!detection || !detection.descriptor) {
+            capLog.innerText = 'Không phát hiện được khuôn mặt để đăng ký.';
+            startCaptureBtn.disabled = false;
+            return;
+          }
           const dataUrl = capCanvas.toDataURL('image/jpeg', 0.9);
-          capLog.innerText = 'Đang gửi ảnh để tạo user...';
-          const res = await fetch(backend + '/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, image: dataUrl, device_id: 'admin-capture-01' }) });
+          const embedding = Array.from(detection.descriptor);
+          capLog.innerText = 'Đang gửi dữ liệu để tạo user...';
+          const res = await fetch(backend + '/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': tokenInput.value.trim() }, body: JSON.stringify({ name, image: dataUrl, embedding }) });
           const j = await res.json();
           if (res.ok) {
             capLog.innerText = 'Tạo nhân viên thành công.';

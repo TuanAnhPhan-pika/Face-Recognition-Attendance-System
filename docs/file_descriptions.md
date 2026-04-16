@@ -27,7 +27,7 @@ Tài liệu này tóm tắt vai trò chính của các tệp và thư mục quan
 
 - **backend/db.js**: Lớp trừu tượng DB: mặc định dùng SQLite (file-based) cho demo, có tuỳ chọn chuyển sang SQL Server khi `USE_SQL_SERVER=true`. Chịu trách nhiệm khởi tạo schema và wrapper `all/get/run` để tương thích.
 - **backend/package.json**, **backend/package-lock.json**: Phụ thuộc Node cho backend và script chạy server.
-- **backend/.env.example**: Mẫu biến môi trường (ADMIN_TOKEN, SAVE_IMAGES, EMBEDDING_THRESHOLD, USE_SQL_SERVER, MSSQL_*).
+- **backend/.env**: Mẫu biến môi trường (ADMIN_TOKEN, SAVE_IMAGES, EMBEDDING_THRESHOLD, USE_SQL_SERVER, MSSQL_*).
 - **backend/.gitignore**: Tệp ignore cho backend.
 
 ---

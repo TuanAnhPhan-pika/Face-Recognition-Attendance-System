@@ -15,6 +15,7 @@ const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'changeme';
 const SAVE_IMAGES = process.env.SAVE_IMAGES === 'true';
 const EMBEDDING_THRESHOLD = parseFloat(process.env.EMBEDDING_THRESHOLD || '0.6');
+const REGISTER_FACE_THRESHOLD = parseFloat(process.env.REGISTER_FACE_THRESHOLD || '0.45');
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -40,8 +41,36 @@ function euclideanDistance(a, b) {
   return Math.sqrt(sum);
 }
 
+function normalizeName(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function parseEmbeddingValue(embedding) {
+  if (Array.isArray(embedding)) return embedding;
+  if (typeof embedding === 'string' && embedding.trim()) {
+    try {
+      const parsed = JSON.parse(embedding);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function hashImageDataUrl(image) {
+  if (!image || typeof image !== 'string') return null;
+  const matches = image.match(/^data:(image\/\w+);base64,(.+)$/);
+  const data = matches ? matches[2] : image;
+  try {
+    return crypto.createHash('md5').update(Buffer.from(data, 'base64')).digest('hex');
+  } catch (err) {
+    return null;
+  }
+}
+
 function findBestMatch(embedding, cb) {
-  db.all('SELECT id, name, face_embedding FROM Users WHERE face_embedding IS NOT NULL', [], (err, rows) => {
+  db.all('SELECT id, name, face_embedding FROM Users', [], (err, rows) => {
     if (err) return cb(err);
     let best = null;
     rows.forEach(row => {
@@ -105,13 +134,19 @@ app.post('/api/attendance', (req, res) => {
                 console.error(err);
                 return res.status(500).json({ error: 'db error' });
               }
-              const payload = {
-                name: (user && user.name) ? user.name : 'Unknown',
-                time: timestamp,
-                device_id: device_id || 'device-unknown'
-              };
-              if (image && (SAVE_IMAGES || !embedding) && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
-              io.emit('attendance', payload);
+              // Only emit WebSocket event if matched (user_id exists)
+              if (user && user.id) {
+                const payload = {
+                  user_id: user.id,
+                  name: user.name,
+                  time: timestamp,
+                  device_id: device_id || 'device-unknown',
+                  matched: true,
+                  distance: best.distance
+                };
+                if (image && (SAVE_IMAGES || !embedding) && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
+                io.emit('attendance', payload);
+              }
               res.json({ success: true, attendanceId: this.lastID, user: (user && user.id) ? user : null, matched: best && best.distance <= EMBEDDING_THRESHOLD, distance: best ? best.distance : null });
             });
         };
@@ -120,20 +155,13 @@ app.post('/api/attendance', (req, res) => {
           // matched existing user
           saveAttendance({ id: best.id, name: best.name });
         } else {
-          // No match: do NOT auto-create new Users from frontend scans
-          // Create only if client explicitly provided a name
-          if (name) {
-            const userName = name || 'Unknown';
-            db.run('INSERT INTO Users (name, face_embedding) VALUES (?, ?)', [userName, JSON.stringify(embedding)], function (err) {
-              if (err) {
-                console.error(err);
-                return res.status(500).json({ error: 'db error' });
-              }
-              saveAttendance({ id: this.lastID, name: userName });
-            });
-          } else {
-            saveAttendance({ id: null, name: 'Unknown' });
-          }
+          // No match: reject - user not registered
+          return res.status(404).json({
+            success: false,
+            error: 'User not found',
+            message: 'Khuôn mặt không được nhận dạng. Vui lòng liên hệ admin để đăng ký.',
+            matched: false
+          });
         }
       });
     }
@@ -159,16 +187,8 @@ app.post('/api/attendance', (req, res) => {
           return res.status(500).json({ error: 'db error' });
         }
 
-        const ensureUser = new Promise((resolve, reject) => {
-          if (row) return resolve({ id: row.id, name: row.name });
-          const userName = name || 'Unknown';
-          db.run('INSERT INTO Users (name, face_hash) VALUES (?, ?)', [userName, hash], function (err) {
-            if (err) return reject(err);
-            resolve({ id: this.lastID, name: userName });
-          });
-        });
-
-        ensureUser.then((user) => {
+        const user = row ? { id: row.id, name: row.name } : null;
+        if (user) {
           const uploadsDir = path.join(__dirname, 'uploads');
           if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
           const fileName = `${Date.now()}_${user.id}.${ext}`;
@@ -189,10 +209,9 @@ app.post('/api/attendance', (req, res) => {
               io.emit('attendance', payload);
               res.json({ success: true, attendanceId: this.lastID, user });
             });
-        }).catch((err) => {
-          console.error(err);
-          res.status(500).json({ error: 'db error' });
-        });
+        } else {
+          return res.json({ success: true, attendanceId: null, user: null, matched: false, message: 'Unknown face' });
+        }
       });
       return;
     }
@@ -236,20 +255,103 @@ app.get('/api/users', adminAuth, (req, res) => {
 
 // Admin: create user with embedding
 app.post('/api/users', adminAuth, (req, res) => {
-  const { name, embedding } = req.body;
-  if (!name || !embedding) return res.status(400).json({ error: 'name and embedding required' });
-  db.run('INSERT INTO Users (name, face_embedding) VALUES (?, ?)', [name, JSON.stringify(embedding)], function (err) {
+  const { name, embedding, image } = req.body;
+  const parsedEmbedding = parseEmbeddingValue(embedding);
+  if (!name || !parsedEmbedding) return res.status(400).json({ error: 'name and embedding required' });
+
+  db.all('SELECT id, name, face_embedding FROM Users WHERE face_embedding IS NOT NULL', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'db error' });
-    res.json({ id: this.lastID, name });
+
+    let best = null;
+    rows.forEach(row => {
+      try {
+        const stored = parseEmbeddingValue(row.face_embedding);
+        if (!stored) return;
+        const dist = euclideanDistance(parsedEmbedding, stored);
+        if (!best || dist < best.distance) best = { id: row.id, name: row.name, distance: dist };
+      } catch (e) {
+        // ignore broken rows
+      }
+    });
+
+    const faceMatched = best && best.distance <= REGISTER_FACE_THRESHOLD;
+    if (faceMatched) {
+      const sameNameExists = rows.some(row => normalizeName(row.name) === normalizeName(name));
+      if (sameNameExists) {
+        return res.status(409).json({
+          error: 'duplicate face and name',
+          matchedUser: best,
+          distance: best.distance
+        });
+      }
+    }
+
+    const faceHash = image ? hashImageDataUrl(image) : null;
+    db.run('INSERT INTO Users (name, face_hash, face_embedding) VALUES (?, ?, ?)', [name, faceHash, JSON.stringify(parsedEmbedding)], function (insertErr) {
+      if (insertErr) return res.status(500).json({ error: 'db error' });
+      res.json({
+        id: this.lastID,
+        name,
+        face_hash: faceHash,
+        has_embedding: true,
+        matchedFace: faceMatched,
+        matchedUser: faceMatched ? best : null,
+        distance: faceMatched ? best.distance : null
+      });
+    });
+  });
+});
+
+// Admin: update user
+app.put('/api/users/:id', adminAuth, (req, res) => {
+  const id = req.params.id;
+  const { name, embedding, image } = req.body;
+  
+  if (!name && !embedding) {
+    return res.status(400).json({ error: 'name or embedding required' });
+  }
+
+  db.get('SELECT * FROM Users WHERE id = ?', [id], (err, user) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const updatedName = name || user.name;
+    const updatedEmbedding = embedding ? parseEmbeddingValue(embedding) : (user.face_embedding ? JSON.parse(user.face_embedding) : null);
+    const updatedFaceHash = image ? hashImageDataUrl(image) : user.face_hash;
+
+    db.run(
+      'UPDATE Users SET name = ?, face_embedding = ?, face_hash = ? WHERE id = ?',
+      [updatedName, updatedEmbedding ? JSON.stringify(updatedEmbedding) : user.face_embedding, updatedFaceHash, id],
+      function (err) {
+        if (err) return res.status(500).json({ error: 'db error' });
+        res.json({
+          success: true,
+          user_id: id,
+          name: updatedName,
+          message: 'User updated successfully'
+        });
+      }
+    );
   });
 });
 
 // Admin: delete user
 app.delete('/api/users/:id', adminAuth, (req, res) => {
   const id = req.params.id;
-  db.run('DELETE FROM Users WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: 'db error' });
-    res.json({ deleted: this.changes });
+  // Delete Attendance records first (Foreign Key constraint)
+  db.run('DELETE FROM Attendance WHERE user_id = ?', [id], (err1) => {
+    if (err1) {
+      console.error(err1);
+      return res.status(500).json({ error: 'db error' });
+    }
+    // Then delete User
+    db.run('DELETE FROM Users WHERE id = ?', [id], function (err2) {
+      if (err2) {
+        console.error(err2);
+        return res.status(500).json({ error: 'db error' });
+      }
+      res.json({ success: true, deleted: this.changes, message: 'User deleted successfully' });
+    });
   });
 });
 

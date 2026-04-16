@@ -48,6 +48,17 @@ MSSQL_DATABASE=AttendanceDB
 # Tùy chọn TLS (dev: trustServerCertificate=true)
 MSSQL_ENCRYPT=false
 MSSQL_TRUST=true
+
+Windows Authentication note (Node.js)
+- The default `mssql` package needs the `msnodesqlv8` driver to use Windows Auth (trusted connection).
+- Install both packages in the `backend` folder:
+
+```powershell
+cd backend
+npm install mssql msnodesqlv8
+```
+
+When using Windows Auth (no `MSSQL_USER`/`MSSQL_PASSWORD`), set `MSSQL_TRUST=true` and `MSSQL_ENCRYPT=false` in your `.env` and use a server name like `MACHINE\\SQLEXPRESS` for named instances.
 ```
 
 Lưu ý: nếu SQL Server chạy trong Docker trên cùng máy, `MSSQL_SERVER=localhost` là ok. Nếu là remote, thay bằng IP hoặc hostname.

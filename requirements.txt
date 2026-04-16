@@ -1,0 +1,175 @@
+# ================================================================================
+# FACE RECOGNITION ATTENDANCE SYSTEM - COMPLETE REQUIREMENTS
+# ================================================================================
+# This file documents all dependencies and models needed to run the project.
+# See setup.md for detailed setup instructions.
+#
+# Project consists of 3 components:
+# 1. Backend (Node.js) - Express server with WebSocket
+# 2. Frontend (HTML/JavaScript) - Web-based face detection using face-api.js
+# 3. Camera Client (Python) - Python script for camera capture and embedding
+#
+# ================================================================================
+
+# ================================================================================
+# PYTHON DEPENDENCIES (for camera_client/)
+# ================================================================================
+# Required for py_client.py to capture frames and send embeddings
+
+face_recognition>=1.4.0
+opencv-python>=4.8.0
+requests>=2.31.0
+
+
+# ================================================================================
+# NODE.JS DEPENDENCIES (for backend/)
+# ================================================================================
+# Install with: cd backend && npm install
+# Required packages listed in backend/package.json:
+#
+# Production dependencies:
+#   - cors@^2.8.5                 (Cross-Origin Resource Sharing)
+#   - dotenv@^16.0.3              (Environment variables management)
+#   - express@^4.18.2             (Web framework)
+#   - socket.io@^4.7.1            (Real-time WebSocket communication)
+#   - sqlite3@^5.1.6              (SQLite database - default)
+#   - mssql@^9.3.2                (SQL Server support - optional)
+#   - msnodesqlv8@^5.1.9          (SQL Server native - optional)
+#
+# Dev dependencies:
+#   - nodemon@^2.0.22             (Auto-reload during development)
+#
+# Install all: npm install
+# Start development: npm run dev
+# Start production: npm start
+
+
+# ================================================================================
+# MODEL DOWNLOADS - FACE-API.JS MODELS
+# ================================================================================
+# These models are used by both frontend and camera client for face detection.
+# Download location: https://justadudewhohacks.github.io/face-api.js/models
+#
+# Models needed: 6 files total (3 models × 2 files each)
+# Two options to download:
+#
+# Option 1: Automatic (Recommended)
+#   cd scripts
+#   node download_faceapi_models.js
+#   This will download all models to:
+#     - frontend_client/models/
+#     - camera_client/models/
+#
+# Option 2: Manual download
+#   Download from URLs below and place in both:
+#     - frontend_client/models/
+#     - camera_client/models/
+
+
+# ===== MODEL 1: Tiny Face Detector =====
+# Lightweight face detection model
+# Download: 2 files
+https://justadudewhohacks.github.io/face-api.js/models/tiny_face_detector_model-weights_manifest.json
+https://justadudewhohacks.github.io/face-api.js/models/tiny_face_detector_model-shard1
+
+# ===== MODEL 2: Face Recognition Model =====
+# Deep learning model for computing face embeddings/descriptors
+# Download: 2 files
+https://justadudewhohacks.github.io/face-api.js/models/face_recognition_model-weights_manifest.json
+https://justadudewhohacks.github.io/face-api.js/models/face_recognition_model-shard1
+
+# ===== MODEL 3: Face Landmark Model =====
+# Detects 68 facial landmarks (eyes, nose, mouth, etc.)
+# Download: 2 files
+https://justadudewhohacks.github.io/face-api.js/models/face_landmark_68_model-weights_manifest.json
+https://justadudewhohacks.github.io/face-api.js/models/face_landmark_68_model-shard1
+
+
+# ================================================================================
+# QUICK START SETUP CHECKLIST
+# ================================================================================
+#
+# 1. Clone repository
+#    git clone <repo-url>
+#    cd Face-Recognition-Attendance-System
+#
+# 2. Setup Backend (Node.js)
+#    cd backend
+#    npm install
+#    Copy .env.example to .env and configure:
+#      - DATABASE_URL (SQLite default or SQL Server)
+#      - EMBEDDING_THRESHOLD (default: 0.5)
+#      - PORT (default: 3000)
+#      - SAVE_IMAGES (true/false)
+#    npm run dev     (or npm start for production)
+#
+# 3. Download Models (choose one method)
+#    Method A - Automatic:
+#      cd scripts
+#      node download_faceapi_models.js
+#    
+#    Method B - Manual:
+#      Create directories: frontend_client/models/ and camera_client/models/
+#      Download 6 files from URLs above to both directories
+#
+# 4. Setup Frontend
+#    Open frontend_client/index.html in web browser
+#    Or open frontend_client/admin.html for admin dashboard
+#
+# 5. Setup Camera Client (Python) - OPTIONAL
+#    python -m venv venv
+#    venv\Scripts\activate  (Windows) or source venv/bin/activate (Linux/Mac)
+#    pip install -r camera_client/requirements.txt
+#    python camera_client/py_client.py --backend http://localhost:3000
+#
+# ================================================================================
+
+# ================================================================================
+# SYSTEM REQUIREMENTS
+# ================================================================================
+# - Node.js 16+ (for backend and model download script)
+# - Python 3.8+ (for camera client)
+# - webcam (for real-time face detection)
+# - Modern web browser supporting WebGL (Chrome, Firefox, Safari, Edge)
+# - 2GB+ RAM recommended
+#
+# ================================================================================
+
+# ================================================================================
+# DATABASE SUPPORT
+# ================================================================================
+# Default: SQLite (no additional setup needed)
+# Optional: SQL Server (configure in backend/.env)
+#   - Install SQL Server 2019 or later
+#   - Create database and tables (see docs/sql_server_setup.md)
+#   - Set DATABASE_URL=mssql://user:password@host:port/database
+#
+# ================================================================================
+
+# ================================================================================
+# TROUBLESHOOTING
+# ================================================================================
+#
+# Models not loading in browser?
+#   - Check browser console (F12) for 404 errors
+#   - Verify files exist in frontend_client/models/
+#   - Clear browser cache and reload
+#
+# Python: "No module named face_recognition"
+#   - Run: pip install -r camera_client/requirements.txt
+#   - Windows: May need Visual Studio build tools
+#
+# Backend won't start?
+#   - Check .env file exists and DATABASE_URL is correct
+#   - For SQLite: ensure backend/uploads/ directory is writable
+#   - Check port 3000 is not in use
+#
+# Camera not detected?
+#   - Verify webcam hardware and drivers
+#   - Check browser permissions (Settings > Privacy > Camera)
+#   - Try different camera index in py_client.py
+#
+# See docs/data_flow.md for architecture details
+# See setup.md for detailed setup instructions
+#
+# ================================================================================
