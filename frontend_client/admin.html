@@ -16,7 +16,7 @@
   <h2>Admin - Quản lý Users</h2>
   <div class="controls">
     <label>Backend URL: <input id="backend" value="http://localhost:3000" style="width:300px" /></label>
-    <label style="margin-left:12px">Admin Token: <input id="token" placeholder="x-admin-token" style="width:200px" /></label>
+    <label style="margin-left:12px">Admin Token: <input id="token" type="password" autocomplete="off" placeholder="x-admin-token" style="width:200px" /></label>
     <input type="hidden" id="modelPath" value="/frontend/models" />
   </div>
 
@@ -62,14 +62,31 @@
 
     refreshBtn.addEventListener('click', refreshUsers);
     loadAttendanceBtn.addEventListener('click', loadAttendance);
+    tokenInput.addEventListener('input', () => {
+      if (tokenInput.value.trim()) {
+        log.innerText = '';
+      }
+    });
+
+    function getRequiredAdminToken(actionLabel) {
+      const token = tokenInput.value.trim();
+      if (!token) {
+        log.innerText = `Vui lòng nhập Admin Token trước khi ${actionLabel}.`;
+        tokenInput.focus();
+        return null;
+      }
+      return token;
+    }
 
     async function refreshUsers() {
       const backend = backendInput.value.trim();
-      const token = tokenInput.value.trim();
+      const token = getRequiredAdminToken('tải danh sách users');
+      if (!token) return;
       try {
         const res = await fetch(backend + '/api/users', { headers: { 'x-admin-token': token } });
         if (!res.ok) { const t = await res.text(); log.innerText = 'Lỗi tải users: ' + t; return; }
         const data = await res.json();
+        log.innerText = '';
         usersDiv.innerHTML = '';
         data.forEach(u => {
           const d = document.createElement('div'); d.className = 'user';
@@ -81,7 +98,9 @@
     }
 
     async function deleteUser(id) {
-      const backend = backendInput.value.trim(); const token = tokenInput.value.trim();
+      const backend = backendInput.value.trim();
+      const token = getRequiredAdminToken(`xoa user ${id}`);
+      if (!token) return;
       if (!confirm('Xoá user ' + id + ' ?')) return;
       try {
         const res = await fetch(backend + '/api/users/' + id, { method: 'DELETE', headers: { 'x-admin-token': token } });
@@ -131,6 +150,8 @@
 
     startCaptureBtn.addEventListener('click', async () => {
       const backend = backendInput.value.trim();
+      const token = getRequiredAdminToken('tạo nhân viên mới');
+      if (!token) return;
       const name = document.getElementById('newName').value.trim();
       if (!name) { capLog.innerText = 'Vui lòng nhập tên nhân viên.'; return; }
       try {
@@ -169,7 +190,7 @@
           const dataUrl = capCanvas.toDataURL('image/jpeg', 0.9);
           const embedding = Array.from(detection.descriptor);
           capLog.innerText = 'Đang gửi dữ liệu để tạo user...';
-          const res = await fetch(backend + '/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': tokenInput.value.trim() }, body: JSON.stringify({ name, image: dataUrl, embedding }) });
+          const res = await fetch(backend + '/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': token }, body: JSON.stringify({ name, image: dataUrl, embedding }) });
           const j = await res.json();
           if (res.ok) {
             capLog.innerText = 'Tạo nhân viên thành công.';
@@ -193,6 +214,7 @@
         const res = await fetch(backend + '/api/attendance');
         if (!res.ok) { log.innerText = 'Lỗi tải lịch sử: ' + await res.text(); return; }
         const data = await res.json();
+        log.innerText = '';
         attendanceDiv.innerHTML = '';
         data.forEach(a => {
           const d = document.createElement('div'); d.className = 'user';

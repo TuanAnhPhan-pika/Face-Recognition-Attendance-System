@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const { Server } = require('socket.io');
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'changeme';
+const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '').trim();
 const SAVE_IMAGES = process.env.SAVE_IMAGES === 'true';
 const EMBEDDING_THRESHOLD = parseFloat(process.env.EMBEDDING_THRESHOLD || '0.6');
 const REGISTER_FACE_THRESHOLD = parseFloat(process.env.REGISTER_FACE_THRESHOLD || '0.45');
@@ -88,7 +88,10 @@ function findBestMatch(embedding, cb) {
 
 function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-  if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
+  if (!ADMIN_TOKEN) {
+    return res.status(503).json({ error: 'Admin token is not configured. Please set ADMIN_TOKEN in backend/.env.' });
+  }
+  if (!token || token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
@@ -353,6 +356,13 @@ app.delete('/api/users/:id', adminAuth, (req, res) => {
       res.json({ success: true, deleted: this.changes, message: 'User deleted successfully' });
     });
   });
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Invalid JSON payload' });
+  }
+  return next(err);
 });
 
 const PORT = process.env.PORT || 3000;
