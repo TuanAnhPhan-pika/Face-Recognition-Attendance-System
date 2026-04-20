@@ -71,16 +71,16 @@ if (!USE_SQL_SERVER) {
 
   const poolPromise = connectWithFallback();
 
-  function replacePlaceholders(q) {
-    let idx = 0;
-    const text = q.replace(/\?/g, () => '@p' + (++idx));
-    return { text, count: idx };
-  }
-
   function toSqlLiteral(value) {
     if (value === null || value === undefined) return 'NULL';
     const text = String(value).replace(/'/g, "''");
     return `'${text}'`;
+  }
+
+  function interpolateQuery(sqlQuery, params) {
+    const values = Array.isArray(params) ? params : [];
+    let index = 0;
+    return sqlQuery.replace(/\?/g, () => toSqlLiteral(values[index++]));
   }
 
   async function ensureSchema() {
@@ -125,10 +125,8 @@ if (!USE_SQL_SERVER) {
       if (typeof params === 'function') { cb = params; params = []; }
       try {
         const pool = await poolPromise;
-        const { text, count } = replacePlaceholders(sqlQuery);
-        const request = pool.request();
-        for (let i = 1; i <= count; i++) request.input('p' + i, sql.NVarChar(sql.MAX), (params && params[i-1] != null) ? params[i-1].toString() : null);
-        const result = await request.query(text);
+        const text = interpolateQuery(sqlQuery, params);
+        const result = await pool.request().query(text);
         cb(null, result.recordset || []);
       } catch (err) { cb(err); }
     },
@@ -136,10 +134,8 @@ if (!USE_SQL_SERVER) {
       if (typeof params === 'function') { cb = params; params = []; }
       try {
         const pool = await poolPromise;
-        const { text, count } = replacePlaceholders(sqlQuery);
-        const request = pool.request();
-        for (let i = 1; i <= count; i++) request.input('p' + i, sql.NVarChar(sql.MAX), (params && params[i-1] != null) ? params[i-1].toString() : null);
-        const result = await request.query(text);
+        const text = interpolateQuery(sqlQuery, params);
+        const result = await pool.request().query(text);
         cb(null, (result.recordset && result.recordset[0]) ? result.recordset[0] : null);
       } catch (err) { cb(err); }
     },

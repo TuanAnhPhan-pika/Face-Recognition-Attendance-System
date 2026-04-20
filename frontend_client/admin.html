@@ -23,22 +23,26 @@
   <div class="controls">
     <button id="refresh">Lấy danh sách users</button>
     <button id="loadAttendance">Tải lịch sử điểm danh</button>
-    <button id="addEmployee" style="margin-left:12px">Thêm nhân viên</button>
+    <button id="createEmployee" style="margin-left:12px">Tạo nhân viên</button>
+    <button id="addEmployeeFace">Thêm mặt nhân viên</button>
   </div>
 
   <div id="capturePanel" style="display:none;margin-top:12px;border:1px solid #ddd;padding:12px">
-    <h3>Đăng ký nhân viên mới</h3>
+    <h3 id="captureTitle">Tạo nhân viên</h3>
     <div>
-      <label>Tên: <input id="newName" placeholder="Tên nhân viên" style="width:220px" /></label>
-      <button id="startCapture">Bắt đầu capture</button>
+      <label id="nameRow">Tên: <input id="newName" placeholder="Tên nhân viên" style="width:220px" /></label>
+      <label id="idRow" style="display:none">ID nhân viên: <input id="employeeId" placeholder="Nhập ID nhân viên" style="width:220px" /></label>
+    </div>
+    <div id="captureMedia" style="margin-top:8px; position:relative; display:none;">
+      <video id="capVideo" autoplay playsinline width="320" height="240" style="border:1px solid #ccc; display:block"></video>
+      <div id="countdown" style="position:absolute;left:0;top:0;width:320px;height:240px;display:none;align-items:center;justify-content:center;font-size:72px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.8);pointer-events:none"></div>
+      <canvas id="capCanvas" width="320" height="240" style="display:none"></canvas>
+      <div id="capLog" style="margin-top:6px;color:#333"></div>
+    </div>
+    <div style="margin-top:8px;">
+      <button id="actionCapture">Tạo nhân viên</button>
       <button id="cancelCapture">Huỷ</button>
     </div>
-    <div style="margin-top:8px; position:relative; display:inline-block;">
-        <video id="capVideo" autoplay playsinline width="320" height="240" style="border:1px solid #ccc; display:block"></video>
-        <div id="countdown" style="position:absolute;left:0;top:0;width:320px;height:240px;display:none;align-items:center;justify-content:center;font-size:72px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.8);pointer-events:none"></div>
-        <canvas id="capCanvas" width="320" height="240" style="display:none"></canvas>
-        <div id="capLog" style="margin-top:6px;color:#333"></div>
-      </div>
   </div>
 
   <div id="log" style="margin-top:8px;color:#333"></div>
@@ -90,7 +94,7 @@
         usersDiv.innerHTML = '';
         data.forEach(u => {
           const d = document.createElement('div'); d.className = 'user';
-          const info = document.createElement('div'); info.innerText = `${u.id} — ${u.name}`;
+          const info = document.createElement('div'); info.innerText = `${u.id} — ${u.name}${u.has_face ? ' (có mặt)' : ' (chưa có mặt)'}`;
           const del = document.createElement('button'); del.innerText = 'Xoá'; del.addEventListener('click', () => deleteUser(u.id));
           d.appendChild(info); d.appendChild(del); usersDiv.appendChild(d);
         });
@@ -109,15 +113,91 @@
       } catch (err) { log.innerText = 'Lỗi kết nối: ' + err.message; }
     }
 
-    // --- Admin single-shot capture for adding users ---
-    const addBtn = document.getElementById('addEmployee');
+    // --- Admin employee create / face attach flow ---
+    const createBtn = document.getElementById('createEmployee');
+    const addFaceBtn = document.getElementById('addEmployeeFace');
     const capturePanel = document.getElementById('capturePanel');
-    const startCaptureBtn = document.getElementById('startCapture');
+    const captureTitle = document.getElementById('captureTitle');
+    const nameRow = document.getElementById('nameRow');
+    const idRow = document.getElementById('idRow');
+    const captureMedia = document.getElementById('captureMedia');
+    const actionCaptureBtn = document.getElementById('actionCapture');
     const cancelCaptureBtn = document.getElementById('cancelCapture');
     const capVideo = document.getElementById('capVideo');
     const capCanvas = document.getElementById('capCanvas');
     const capLog = document.getElementById('capLog');
     let capStream = null;
+    let panelMode = 'create';
+
+    function stopCaptureStream() {
+      if (capStream) {
+        capStream.getTracks().forEach(t => t.stop());
+        capStream = null;
+      }
+      if (capVideo.srcObject) {
+        capVideo.srcObject = null;
+      }
+    }
+
+    function resetPanelState() {
+      stopCaptureStream();
+      capLog.innerText = '';
+      document.getElementById('countdown').style.display = 'none';
+      actionCaptureBtn.disabled = false;
+    }
+
+    function openPanel(mode) {
+      panelMode = mode;
+      capturePanel.style.display = 'block';
+      nameRow.style.display = mode === 'create' ? '' : 'none';
+      idRow.style.display = mode === 'addFace' ? '' : 'none';
+      captureMedia.style.display = mode === 'addFace' ? 'block' : 'none';
+      captureTitle.innerText = mode === 'create' ? 'Tạo nhân viên' : 'Thêm mặt nhân viên';
+      actionCaptureBtn.innerText = mode === 'create' ? 'Tạo nhân viên' : 'Thêm mặt';
+      resetPanelState();
+      if (mode === 'create') {
+        document.getElementById('newName').focus();
+      } else {
+        document.getElementById('employeeId').focus();
+      }
+    }
+
+    async function captureFaceData() {
+      capLog.innerText = 'Đang tải mô hình nhận diện...';
+      const modelsOk = await loadModels();
+      if (!modelsOk) {
+        throw new Error('Không tải được face-api models.');
+      }
+
+      capLog.innerText = 'Đang mở camera...';
+      capStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      capVideo.srcObject = capStream;
+      await new Promise(resolve => capVideo.onloadedmetadata = resolve);
+
+      const countdownEl = document.getElementById('countdown');
+      countdownEl.style.display = 'flex';
+      for (let i = 5; i >= 1; i--) {
+        countdownEl.innerText = i;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      countdownEl.style.display = 'none';
+
+      const ctx = capCanvas.getContext('2d');
+      capCanvas.width = capVideo.videoWidth || 320;
+      capCanvas.height = capVideo.videoHeight || 240;
+      ctx.drawImage(capVideo, 0, 0, capCanvas.width, capCanvas.height);
+      stopCaptureStream();
+
+      const detection = await faceapi.detectSingleFace(capCanvas, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+      if (!detection || !detection.descriptor) {
+        throw new Error('Không phát hiện được khuôn mặt để đăng ký.');
+      }
+
+      return {
+        dataUrl: capCanvas.toDataURL('image/jpeg', 0.9),
+        embedding: Array.from(detection.descriptor)
+      };
+    }
 
     async function loadModels() {
       try {
@@ -137,75 +217,84 @@
       return false;
     }
 
-    addBtn.addEventListener('click', () => {
-      capturePanel.style.display = 'block';
-      capLog.innerText = '';
-      document.getElementById('newName').focus();
+    createBtn.addEventListener('click', () => {
+      openPanel('create');
+    });
+
+    addFaceBtn.addEventListener('click', () => {
+      openPanel('addFace');
     });
 
     cancelCaptureBtn.addEventListener('click', () => {
-      if (capStream) { capStream.getTracks().forEach(t => t.stop()); capStream = null; }
+      resetPanelState();
       capturePanel.style.display = 'none';
     });
 
-    startCaptureBtn.addEventListener('click', async () => {
+    actionCaptureBtn.addEventListener('click', async () => {
       const backend = backendInput.value.trim();
-      const token = getRequiredAdminToken('tạo nhân viên mới');
+      const token = getRequiredAdminToken(panelMode === 'create' ? 'tạo nhân viên mới' : 'thêm mặt nhân viên');
       if (!token) return;
-      const name = document.getElementById('newName').value.trim();
-      if (!name) { capLog.innerText = 'Vui lòng nhập tên nhân viên.'; return; }
+      actionCaptureBtn.disabled = true;
+
       try {
-          capLog.innerText = 'Đang tải mô hình nhận diện...';
-          const modelsOk = await loadModels();
-          if (!modelsOk) {
-            capLog.innerText = 'Không tải được face-api models.';
-            startCaptureBtn.disabled = false;
+        if (panelMode === 'create') {
+          const name = document.getElementById('newName').value.trim();
+          if (!name) {
+            capLog.innerText = 'Vui lòng nhập tên nhân viên.';
             return;
           }
-          capLog.innerText = 'Đang mở camera...';
-          startCaptureBtn.disabled = true;
-          capStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          capVideo.srcObject = capStream;
-          await new Promise(resolve => capVideo.onloadedmetadata = resolve);
-          // 5s countdown before capture
-          const countdownEl = document.getElementById('countdown');
-          countdownEl.style.display = 'flex';
-          for (let i = 5; i >= 1; i--) {
-            countdownEl.innerText = i;
-            await new Promise(r => setTimeout(r, 1000));
-          }
-          countdownEl.style.display = 'none';
-          // capture single frame
-          const ctx = capCanvas.getContext('2d');
-          capCanvas.width = capVideo.videoWidth || 320; capCanvas.height = capVideo.videoHeight || 240;
-          ctx.drawImage(capVideo, 0, 0, capCanvas.width, capCanvas.height);
-          // stop camera
-          capStream.getTracks().forEach(t => t.stop()); capStream = null;
-          const detection = await faceapi.detectSingleFace(capCanvas, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-          if (!detection || !detection.descriptor) {
-            capLog.innerText = 'Không phát hiện được khuôn mặt để đăng ký.';
-            startCaptureBtn.disabled = false;
-            return;
-          }
-          const dataUrl = capCanvas.toDataURL('image/jpeg', 0.9);
-          const embedding = Array.from(detection.descriptor);
-          capLog.innerText = 'Đang gửi dữ liệu để tạo user...';
-          const res = await fetch(backend + '/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': token }, body: JSON.stringify({ name, image: dataUrl, embedding }) });
+
+          capLog.innerText = 'Đang tạo nhân viên...';
+          const res = await fetch(backend + '/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: JSON.stringify({ name })
+          });
           const j = await res.json();
+
           if (res.ok) {
-            capLog.innerText = 'Tạo nhân viên thành công.';
+            capLog.innerText = `Tạo nhân viên thành công. ID: ${j.id}`;
+            document.getElementById('newName').value = '';
             refreshUsers();
+            setTimeout(() => { capturePanel.style.display = 'none'; resetPanelState(); }, 1200);
           } else {
-            capLog.innerText = 'Lỗi: ' + (j && j.error ? j.error : JSON.stringify(j));
+            capLog.innerText = 'Lỗi: ' + (j && j.error ? j.error : JSON.stringify(j)) + (j && j.details ? ` | ${j.details}` : '');
           }
-          startCaptureBtn.disabled = false;
-          // hide panel after brief message
-          setTimeout(() => { capturePanel.style.display = 'none'; document.getElementById('newName').value = ''; }, 1200);
-        } catch (err) {
-          capLog.innerText = 'Lỗi camera/gửi: ' + err.message;
-          if (capStream) { capStream.getTracks().forEach(t => t.stop()); capStream = null; }
-          startCaptureBtn.disabled = false;
+          return;
         }
+
+        const employeeId = document.getElementById('employeeId').value.trim();
+        if (!employeeId) {
+          capLog.innerText = 'Vui lòng nhập ID nhân viên.';
+          return;
+        }
+
+        const capture = await captureFaceData();
+        capLog.innerText = 'Đang gửi dữ liệu mặt...';
+        const res = await fetch(backend + '/api/users/' + encodeURIComponent(employeeId) + '/face', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+          body: JSON.stringify({ image: capture.dataUrl, embedding: capture.embedding })
+        });
+        const j = await res.json();
+
+        if (res.ok) {
+          capLog.innerText = `Thêm mặt thành công cho nhân viên ${employeeId}.`;
+          refreshUsers();
+          setTimeout(() => { capturePanel.style.display = 'none'; resetPanelState(); }, 1200);
+        } else if (res.status === 404) {
+          capLog.innerText = 'Chưa tồn tại nhân viên.';
+        } else {
+          capLog.innerText = 'Lỗi: ' + (j && j.error ? j.error : JSON.stringify(j)) + (j && j.details ? ` | ${j.details}` : '');
+        }
+      } catch (err) {
+        capLog.innerText = err.message.startsWith('Không phát hiện') ? err.message : 'Lỗi camera/gửi: ' + err.message;
+      } finally {
+        actionCaptureBtn.disabled = false;
+        if (panelMode === 'addFace') {
+          stopCaptureStream();
+        }
+      }
     });
 
     async function loadAttendance() {
