@@ -16,6 +16,7 @@ const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '').trim();
 const SAVE_IMAGES = process.env.SAVE_IMAGES === 'true';
 const EMBEDDING_THRESHOLD = parseFloat(process.env.EMBEDDING_THRESHOLD || '0.6');
 const REGISTER_FACE_THRESHOLD = parseFloat(process.env.REGISTER_FACE_THRESHOLD || '0.45');
+const USE_SQL_SERVER = (process.env.USE_SQL_SERVER === 'true' || process.env.USE_SQL_SERVER === '1');
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
@@ -69,21 +70,39 @@ function hashImageDataUrl(image) {
   }
 }
 
-function findBestMatch(embedding, cb) {
-  db.all('SELECT id, name, face_embedding FROM Users', [], (err, rows) => {
+function dbErrorResponse(res, err) {
+  console.error(err);
+  return res.status(500).json({
+    error: 'db error',
+    details: err && err.message ? err.message : String(err)
+  });
+}
+
+function findBestEmbeddingMatch(embedding, excludeUserId, cb) {
+  const query = excludeUserId
+    ? 'SELECT id, name, face_embedding FROM Users WHERE face_embedding IS NOT NULL AND id <> ?'
+    : 'SELECT id, name, face_embedding FROM Users WHERE face_embedding IS NOT NULL';
+  const params = excludeUserId ? [excludeUserId] : [];
+
+  db.all(query, params, (err, rows) => {
     if (err) return cb(err);
     let best = null;
     rows.forEach(row => {
       try {
-        const stored = JSON.parse(row.face_embedding);
+        const stored = parseEmbeddingValue(row.face_embedding);
+        if (!stored) return;
         const dist = euclideanDistance(embedding, stored);
         if (!best || dist < best.distance) best = { id: row.id, name: row.name, distance: dist };
       } catch (e) {
-        // ignore parse errors
+        // ignore broken rows
       }
     });
     cb(null, best);
   });
+}
+
+function findBestMatch(embedding, cb) {
+  findBestEmbeddingMatch(embedding, null, cb);
 }
 
 function adminAuth(req, res, next) {
@@ -95,10 +114,92 @@ function adminAuth(req, res, next) {
   next();
 }
 
+function getVietnamTimestamp() {
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(new Date());
+
+  const map = {};
+  parts.forEach((p) => {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  });
+
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+}
+
+function formatTimestampForResponse(value) {
+  if (!value) return null;
+
+  // SQLite stores timestamp as text in VN format already.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const dateObj = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dateObj.getTime())) return String(value);
+
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(dateObj);
+
+  const map = {};
+  parts.forEach((p) => {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  });
+
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`;
+}
+
+function getVietnamDate() {
+  return getVietnamTimestamp().slice(0, 10);
+}
+
+function insertAttendanceOncePerDay(userId, timestamp, dateStr, deviceId, imagePath, cb) {
+  if (!userId) return cb(null, { inserted: false, attendanceId: null });
+
+  const device = deviceId || 'device-unknown';
+  const sqlQuery = USE_SQL_SERVER
+    ? `INSERT INTO Attendance (user_id, timestamp, device_id, image_path)
+       OUTPUT INSERTED.id
+       SELECT ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM Attendance WHERE user_id = ? AND CONVERT(date, timestamp) = ?
+       )`
+    : `INSERT INTO Attendance (user_id, timestamp, device_id, image_path)
+       SELECT ?, ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM Attendance WHERE user_id = ? AND substr(timestamp, 1, 10) = ?
+       )`;
+
+  db.run(sqlQuery, [userId, timestamp, device, imagePath || null, userId, dateStr], function (err) {
+    if (err) return cb(err);
+    const changed = Number(this && this.changes ? this.changes : 0);
+    cb(null, {
+      inserted: changed > 0,
+      attendanceId: this && this.lastID ? this.lastID : null
+    });
+  });
+}
+
 app.post('/api/attendance', (req, res) => {
   try {
     const { image, device_id, name, embedding } = req.body;
-    const timestamp = new Date().toISOString();
+    const timestamp = getVietnamTimestamp();
+    const attendanceDate = getVietnamDate();
 
     // If client provides embedding (preferred)
     if (embedding && Array.isArray(embedding) && embedding.length > 0) {
@@ -109,6 +210,7 @@ app.post('/api/attendance', (req, res) => {
         }
 
         const saveAttendance = (user) => {
+          const userIdParam = (user && user.id) ? user.id : null;
           const uploadsDir = path.join(__dirname, 'uploads');
           let fileName = null;
           const uidForFile = (user && user.id) ? user.id : 'unknown';
@@ -130,28 +232,46 @@ app.post('/api/attendance', (req, res) => {
             }
           }
 
-          const userIdParam = (user && user.id) ? user.id : null;
-          db.run('INSERT INTO Attendance (user_id, timestamp, device_id, image_path) VALUES (?, ?, ?, ?)',
-            [userIdParam, timestamp, device_id || 'device-unknown', fileName], function (err) {
-              if (err) {
-                console.error(err);
-                return res.status(500).json({ error: 'db error' });
-              }
-              // Only emit WebSocket event if matched (user_id exists)
-              if (user && user.id) {
-                const payload = {
-                  user_id: user.id,
-                  name: user.name,
-                  time: timestamp,
-                  device_id: device_id || 'device-unknown',
-                  matched: true,
-                  distance: best.distance
-                };
-                if (image && (SAVE_IMAGES || !embedding) && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
-                io.emit('attendance', payload);
-              }
-              res.json({ success: true, attendanceId: this.lastID, user: (user && user.id) ? user : null, matched: best && best.distance <= EMBEDDING_THRESHOLD, distance: best ? best.distance : null });
+          insertAttendanceOncePerDay(userIdParam, timestamp, attendanceDate, device_id, fileName, (insertErr, insertResult) => {
+            if (insertErr) {
+              console.error(insertErr);
+              return res.status(500).json({ error: 'db error' });
+            }
+
+            if (!insertResult.inserted) {
+              return res.json({
+                success: true,
+                attendanceId: null,
+                user: user && user.id ? user : null,
+                matched: true,
+                distance: best ? best.distance : null,
+                duplicate: true,
+                message: 'Người dùng đã điểm danh hôm nay.'
+              });
+            }
+
+            // Only emit WebSocket event if matched (user_id exists)
+            if (user && user.id) {
+              const payload = {
+                user_id: user.id,
+                name: user.name,
+                time: timestamp,
+                device_id: device_id || 'device-unknown',
+                matched: true,
+                distance: best.distance
+              };
+              if (image && (SAVE_IMAGES || !embedding) && fileName) payload.image = `data:image/*;base64,${fs.readFileSync(path.join(__dirname, 'uploads', fileName)).toString('base64')}`;
+              io.emit('attendance', payload);
+            }
+
+            res.json({
+              success: true,
+              attendanceId: insertResult.attendanceId,
+              user: (user && user.id) ? user : null,
+              matched: best && best.distance <= EMBEDDING_THRESHOLD,
+              distance: best ? best.distance : null
             });
+          });
         };
 
         if (best && best.distance <= EMBEDDING_THRESHOLD) {
@@ -197,21 +317,32 @@ app.post('/api/attendance', (req, res) => {
           const fileName = `${Date.now()}_${user.id}.${ext}`;
           fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
 
-          db.run('INSERT INTO Attendance (user_id, timestamp, device_id, image_path) VALUES (?, ?, ?, ?)',
-            [user.id, timestamp, device_id || 'device-unknown', fileName], function (err) {
-              if (err) {
-                console.error(err);
-                return res.status(500).json({ error: 'db error' });
-              }
-              const payload = {
-                name: user.name,
-                time: timestamp,
-                image: `data:image/${ext};base64,${data}`,
-                device_id: device_id || 'device-unknown'
-              };
-              io.emit('attendance', payload);
-              res.json({ success: true, attendanceId: this.lastID, user });
-            });
+          insertAttendanceOncePerDay(user.id, timestamp, attendanceDate, device_id, fileName, (insertErr, insertResult) => {
+            if (insertErr) {
+              console.error(insertErr);
+              return res.status(500).json({ error: 'db error' });
+            }
+
+            if (!insertResult.inserted) {
+              return res.json({
+                success: true,
+                attendanceId: null,
+                user,
+                matched: true,
+                duplicate: true,
+                message: 'Người dùng đã điểm danh hôm nay.'
+              });
+            }
+
+            const payload = {
+              name: user.name,
+              time: timestamp,
+              image: `data:image/${ext};base64,${data}`,
+              device_id: device_id || 'device-unknown'
+            };
+            io.emit('attendance', payload);
+            res.json({ success: true, attendanceId: insertResult.attendanceId, user });
+          });
         } else {
           return res.json({ success: true, attendanceId: null, user: null, matched: false, message: 'Unknown face' });
         }
@@ -240,7 +371,7 @@ app.get('/api/attendance', (req, res) => {
     const result = rows.map(r => ({
       id: r.id,
       name: r.name || 'Unknown',
-      time: r.timestamp,
+      time: formatTimestampForResponse(r.timestamp),
       image: r.image_path ? `/uploads/${r.image_path}` : null,
       device_id: r.device_id
     }));
@@ -250,57 +381,78 @@ app.get('/api/attendance', (req, res) => {
 
 // Admin: list users
 app.get('/api/users', adminAuth, (req, res) => {
-  db.all('SELECT id, name FROM Users ORDER BY id', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'db error' });
+  db.all('SELECT id, name, CASE WHEN face_embedding IS NOT NULL THEN 1 ELSE 0 END AS has_face FROM Users ORDER BY id', [], (err, rows) => {
+    if (err) return dbErrorResponse(res, err);
     res.json(rows);
   });
 });
 
-// Admin: create user with embedding
+// Admin: create user without face data yet
 app.post('/api/users', adminAuth, (req, res) => {
-  const { name, embedding, image } = req.body;
-  const parsedEmbedding = parseEmbeddingValue(embedding);
-  if (!name || !parsedEmbedding) return res.status(400).json({ error: 'name and embedding required' });
+  const { name } = req.body;
+  const trimmedName = String(name || '').trim();
 
-  db.all('SELECT id, name, face_embedding FROM Users WHERE face_embedding IS NOT NULL', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: 'db error' });
+  if (!trimmedName) return res.status(400).json({ error: 'name required' });
 
-    let best = null;
-    rows.forEach(row => {
-      try {
-        const stored = parseEmbeddingValue(row.face_embedding);
-        if (!stored) return;
-        const dist = euclideanDistance(parsedEmbedding, stored);
-        if (!best || dist < best.distance) best = { id: row.id, name: row.name, distance: dist };
-      } catch (e) {
-        // ignore broken rows
-      }
+  db.run('INSERT INTO Users (name, face_hash, face_embedding) VALUES (?, NULL, NULL)', [trimmedName], function (insertErr) {
+    if (insertErr) return dbErrorResponse(res, insertErr);
+    res.json({
+      id: this.lastID,
+      name: trimmedName,
+      face_hash: null,
+      face_embedding: null,
+      has_embedding: false,
+      has_face: false
     });
+  });
+});
 
-    const faceMatched = best && best.distance <= REGISTER_FACE_THRESHOLD;
-    if (faceMatched) {
-      const sameNameExists = rows.some(row => normalizeName(row.name) === normalizeName(name));
-      if (sameNameExists) {
+// Admin: add or update face for an existing user
+app.post('/api/users/:id/face', adminAuth, (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  const { embedding, image } = req.body;
+  const parsedEmbedding = parseEmbeddingValue(embedding);
+  const faceHash = hashImageDataUrl(image);
+
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'invalid user id' });
+  }
+
+  if (!parsedEmbedding || !image || !faceHash) {
+    return res.status(400).json({ error: 'image and embedding required' });
+  }
+
+  db.get('SELECT id, name, face_embedding FROM Users WHERE id = ?', [id], (err, user) => {
+    if (err) return dbErrorResponse(res, err);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    findBestEmbeddingMatch(parsedEmbedding, id, (matchErr, best) => {
+      if (matchErr) return dbErrorResponse(res, matchErr);
+
+      const faceMatched = best && best.distance <= REGISTER_FACE_THRESHOLD;
+      if (faceMatched) {
         return res.status(409).json({
-          error: 'duplicate face and name',
+          error: 'đã tồn tại khuôn mặt tương tự ở nhân viên có mã số ' + best.id,
           matchedUser: best,
           distance: best.distance
         });
       }
-    }
 
-    const faceHash = image ? hashImageDataUrl(image) : null;
-    db.run('INSERT INTO Users (name, face_hash, face_embedding) VALUES (?, ?, ?)', [name, faceHash, JSON.stringify(parsedEmbedding)], function (insertErr) {
-      if (insertErr) return res.status(500).json({ error: 'db error' });
-      res.json({
-        id: this.lastID,
-        name,
-        face_hash: faceHash,
-        has_embedding: true,
-        matchedFace: faceMatched,
-        matchedUser: faceMatched ? best : null,
-        distance: faceMatched ? best.distance : null
-      });
+      db.run(
+        'UPDATE Users SET face_hash = ?, face_embedding = ? WHERE id = ?',
+        [faceHash, JSON.stringify(parsedEmbedding), id],
+        function (updateErr) {
+          if (updateErr) return dbErrorResponse(res, updateErr);
+          res.json({
+            success: true,
+            user_id: id,
+            name: user.name,
+            face_hash: faceHash,
+            has_embedding: true,
+            message: 'Face added successfully'
+          });
+        }
+      );
     });
   });
 });
@@ -315,7 +467,7 @@ app.put('/api/users/:id', adminAuth, (req, res) => {
   }
 
   db.get('SELECT * FROM Users WHERE id = ?', [id], (err, user) => {
-    if (err) return res.status(500).json({ error: 'db error' });
+    if (err) return dbErrorResponse(res, err);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const updatedName = name || user.name;
@@ -326,7 +478,7 @@ app.put('/api/users/:id', adminAuth, (req, res) => {
       'UPDATE Users SET name = ?, face_embedding = ?, face_hash = ? WHERE id = ?',
       [updatedName, updatedEmbedding ? JSON.stringify(updatedEmbedding) : user.face_embedding, updatedFaceHash, id],
       function (err) {
-        if (err) return res.status(500).json({ error: 'db error' });
+        if (err) return dbErrorResponse(res, err);
         res.json({
           success: true,
           user_id: id,
@@ -344,14 +496,12 @@ app.delete('/api/users/:id', adminAuth, (req, res) => {
   // Delete Attendance records first (Foreign Key constraint)
   db.run('DELETE FROM Attendance WHERE user_id = ?', [id], (err1) => {
     if (err1) {
-      console.error(err1);
-      return res.status(500).json({ error: 'db error' });
+      return dbErrorResponse(res, err1);
     }
     // Then delete User
     db.run('DELETE FROM Users WHERE id = ?', [id], function (err2) {
       if (err2) {
-        console.error(err2);
-        return res.status(500).json({ error: 'db error' });
+        return dbErrorResponse(res, err2);
       }
       res.json({ success: true, deleted: this.changes, message: 'User deleted successfully' });
     });
