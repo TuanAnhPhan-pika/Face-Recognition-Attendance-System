@@ -6,25 +6,22 @@
 
 **Yêu cầu cơ bản:**
 - Node.js 16+ (download: https://nodejs.org/)
-- Python 3.8+ (download: https://www.python.org/)
 - Git (tùy chọn)
 
-**Setup (chỉ 1 lệnh):**
+**Chạy nhanh (1 lệnh):**
 
 ```powershell
 # Mở PowerShell, vào thư mục project
 cd Face-Recognition-Attendance-System
 
-# Chạy setup script (sẽ cài tất cả tự động)
+# Chạy launcher (mở backend và frontend)
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-**Xong?** Bạn sẽ thấy thông báo setup complete. Script sẽ:
-- ✓ Kiểm tra Node.js, Python
-- ✓ Cài npm packages (backend)
-- ✓ Cài Python packages (camera client)
-- ✓ Tải 6 model files từ CDN
-- ✓ Tạo file .env
+**Xong?** Script sẽ:
+- ✓ Kiểm tra Node.js và npm
+- ✓ Mở backend trong một cửa sổ PowerShell riêng
+- ✓ Mở frontend trong trình duyệt
 
 ---
 
@@ -32,7 +29,6 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 **Yêu cầu cơ bản:**
 - Node.js 16+ 
-- Python 3.8+
 - Git (tùy chọn)
 
 **Setup (chỉ 1 lệnh):**
