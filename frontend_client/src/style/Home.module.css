@@ -1,0 +1,197 @@
+/* src/style/Home.module.css */
+
+.homeContainer {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+    color: #333;
+    font-size: 16px;
+}
+
+.notificationArea {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    z-index: 9999;
+}
+
+.notificationToast {
+    background: #0b8457;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    font-weight: 600;
+    margin-bottom: 12px;
+    animation: slideIn 0.3s ease-out;
+    font-size: 16px;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.mainTitle {
+    color: white;
+    padding-bottom: 10px;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.configSection {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 16px;
+}
+
+.textInput {
+    width: 250px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 0 10px;
+    font-size: 16px;
+}
+
+.btnAction {
+    padding: 8px 16px;
+    margin-right: 8px;
+    cursor: pointer;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    transition: background 0.2s;
+    font-size: 16px;
+}
+
+.btnAction:hover { background: #5a6268; }
+
+.cameraPanel {
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 20px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+}
+
+.panelTitle {
+    margin-top: 0;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.buttonGroup {
+    margin-bottom: 15px;
+}
+
+.btnStart {
+    background: #28a745;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.btnStart:hover:not(:disabled) {
+    background: #218838;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.btnStart:disabled {
+    background: #1e7e34;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: 0 0 12px rgba(40, 167, 69, 0.6) inset, 0 0 8px rgba(40, 167, 69, 0.4);
+    border: 2px solid #0f5c23;
+    font-weight: bold;
+}
+
+.btnStop {
+    background: #dc3545;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 10px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.btnStop:hover:not(:disabled) {
+    background: #c82333;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+}
+
+.btnStop:disabled {
+    background: #bd2130;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: 0 0 12px rgba(220, 53, 69, 0.6) inset, 0 0 8px rgba(220, 53, 69, 0.4);
+    border: 2px solid #8b1825;
+    font-weight: bold;
+}
+
+.videoWrapper {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 15px;
+}
+
+.videoStream {
+    display: block;
+    width: 640px; /* Tăng kích thước lên một chút cho dễ nhìn */
+    height: 480px;
+}
+
+.overlayCanvas {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, 0);
+    pointer-events: none;
+}
+
+.cameraLog {
+    position: absolute;
+    font-size: 16px;
+}
+
+.historyItem {
+    border: 1px solid #eee;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 15px;
+    transition: transform 0.2s;
+    font-size: 16px;
+}
+
+.historyItem:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+
+.historyImg {
+    width: 100px;
+    height: 75px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #f0f0f0;
+}
