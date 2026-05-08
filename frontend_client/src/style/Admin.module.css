@@ -1,0 +1,422 @@
+/* src/style/Admin.module.css */
+
+.adminContainer {
+    font-family: 'Inter', -apple-system, sans-serif;
+    padding: 24px;
+    background-color: #eef2f5;
+    min-height: 100vh;
+    color: #2d3436;
+}
+
+.pageTitle {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-weight: 700;
+    font-size: 28px;
+    border-bottom: 2px solid #3498db;
+    display: inline-block;
+    padding-bottom: 10px;
+}
+
+/* ==========================================
+   Config Section & Auth
+========================================== */
+.configSection {
+    display: flex;
+    gap: 20px;
+    background: white;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 6px 14px rgba(44, 62, 80, 0.09);
+    border: 1px solid #cfd9e2;
+    margin-bottom: 20px;
+    align-items: center;
+    justify-content: center;
+}
+
+.inputGroup {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    font-size: 16px;
+    align-items: center;
+}
+
+.textInput {
+    padding: 8px 12px;
+    border: 1px solid #dfe6e9;
+    border-radius: 4px;
+    width: 250px;
+    font-size: 16px;
+    outline: none;
+}
+
+.textInput:focus,
+.textInputFull:focus,
+.modalInput:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+}
+
+.textInput[readonly] {
+    background: #eef2f5;
+    color: #7f8c8d;
+    cursor: not-allowed;
+}
+
+.authStatusWrapper {
+    display: flex;
+    align-items: center;
+}
+
+.authStatusText {
+    color: green;
+    margin-right: 15px;
+    font-weight: bold;
+}
+
+/* ==========================================
+   Buttons
+========================================== */
+.mainActions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.btnPrimary { background: #3498db; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+.btnSuccess { background: #2ecc71; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+.btnDelete { background: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+.btnDanger { background: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btnAction { background: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 18px; font-weight: bold; }
+.btnCancel { background: #f8f9fa; color: #333; border: 1px solid #e1e8ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 18px; }
+
+.btnPrimary:hover,
+.btnAction:hover { background: #2980b9; }
+.btnSuccess:hover { background: #27ae60; }
+.btnDelete:hover,
+.btnDanger:hover { background: #c0392b; }
+
+/* ==========================================
+   Token Modal
+========================================== */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modalBox {
+    background: #fff;
+    padding: 24px;
+    border-radius: 8px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.modalTitle {
+    margin: 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.modalSubtitle {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.modalInput {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    outline: none;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+/* ==========================================
+   Capture Panel & Camera
+========================================== */
+.capturePanel {
+    background: white;
+    border: 1px solid #cfd9e2;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 30px;
+    animation: fadeIn 0.3s ease;
+    box-shadow: 0 8px 18px rgba(44, 62, 80, 0.1);
+}
+
+.panelTitle {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 20px;
+}
+
+.panelBody {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+.textInputFull {
+    font-size: 18px;
+    padding: 8px;
+    width: 100%;
+    max-width: 320px;
+    border: 1px solid #dfe6e9;
+    border-radius: 6px;
+}
+
+.videoWrapper {
+    position: relative;
+    width: 320px;
+    height: 240px;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 15px auto;
+}
+
+.videoStream {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.absoluteLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Guide Box AI */
+.guideBox {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160px;
+    height: 200px;
+    border: 3px dashed rgba(0, 255, 0, 0.7);
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.guideText {
+    position: absolute;
+    top: -30px;
+    color: #00FF00;
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+}
+
+.guideCountdown {
+    font-size: 56px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.panelActions {
+    display: flex;
+    gap: 12px;
+}
+
+/* ==========================================
+   Dashboard Layout & Lists
+========================================== */
+.dashboardLayout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.listSection {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 8px 18px rgba(44, 62, 80, 0.1);
+    border: 1px solid #cfd9e2;
+}
+
+.sectionTitle {
+    margin-top: 0;
+    font-size: 18px;
+}
+
+.scrollBox {
+    max-height: 500px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* Items */
+.userItem {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    border-bottom: 1px solid #dfe7ee;
+    font-size: 16px;
+    min-height: auto;
+}
+
+.userInfo {
+    display: contents;
+}
+
+.userId {
+    color: #636e72;
+    font-family: monospace;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+.userName {
+    font-weight: bold;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+.userTag {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.userDeleteBtn {
+    text-align: center;
+}
+
+/* Table Header for Users */
+.userTableHeader {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 12px;
+    font-weight: bold;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    font-size: 14px;
+    border-bottom: 2px solid #e1e8ed;
+}
+
+.userTableHeader > div {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.historyItem {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dfe7ee;
+    font-size: 16px;
+    min-height: auto;
+}
+
+.historyName {
+    font-weight: bold;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+.historyUserId {
+    font-size: 14px;
+    background: #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-align: center;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+.historyTime {
+    color: #3498db;
+    font-weight: bold;
+    word-break: break-word;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+/* Table Header for Attendance */
+.historyTableHeader {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 12px;
+    font-weight: bold;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    font-size: 14px;
+    border-bottom: 2px solid #e1e8ed;
+}
+
+.historyTableHeader > div {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.historyThumb {
+    width: 80px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+/* ==========================================
+   Tags & Utils
+========================================== */
+.tagSuccess { background: #e6fffa; color: #38b2ac; padding: 4px 12px; border-radius: 99px; font-size: 14px; font-weight: bold; }
+.tagDanger { background: #fff5f5; color: #e53e3e; padding: 4px 12px; border-radius: 99px; font-size: 14px; font-weight: bold; }
+
+.errorLog { color: #d63031; font-weight: bold; margin-bottom: 15px; }
+.capLog { color: #3498db; margin-top: 10px; font-style: italic; font-size: 16px; }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}

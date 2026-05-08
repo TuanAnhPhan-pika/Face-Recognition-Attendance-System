@@ -1,0 +1,272 @@
+/* src/style/Home.module.css */
+
+.homeContainer {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    padding: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+    color: #333;
+    font-size: 16px;
+}
+
+.notificationArea {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    z-index: 9999;
+}
+
+.notificationToast {
+    background: #0b8457;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    font-weight: 600;
+    margin-bottom: 12px;
+    animation: slideIn 0.3s ease-out;
+    font-size: 16px;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.mainTitle {
+    color: #2c3e50;
+    padding-bottom: 10px;
+    margin: 0 0 20px;
+    font-size: 28px;
+    font-weight: bold;
+    border-bottom: 2px solid #3498db;
+    display: inline-block;
+}
+
+.configSection {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 16px;
+    border: 1px solid #cfd9e2;
+    box-shadow: 0 3px 8px rgba(44, 62, 80, 0.08);
+}
+
+.textInput {
+    width: 250px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 0 10px;
+    font-size: 16px;
+}
+
+.streamInput {
+    width: min(100%, 420px);
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 0 10px;
+    font-size: 16px;
+    outline: none;
+}
+
+.textInput:focus,
+.streamInput:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.textInput[readonly] {
+    background: #eef2f5;
+    color: #7f8c8d;
+    cursor: not-allowed;
+}
+
+.btnAction {
+    padding: 8px 16px;
+    margin-right: 8px;
+    cursor: pointer;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    transition: background 0.2s;
+    font-size: 16px;
+}
+
+.btnAction:hover { background: #2980b9; }
+
+.cameraPanel {
+    border: 1px solid #cfd9e2;
+    border-radius: 12px;
+    padding: 20px;
+    background: white;
+    box-shadow: 0 8px 18px rgba(44, 62, 80, 0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.panelTitle {
+    margin-top: 0;
+    font-size: 20px;
+    font-weight: bold;
+    color: #34495e;
+}
+
+.subPanelTitle {
+    margin: 0 0 10px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.iotPanel {
+    border: 1px solid #cfd9e2;
+    border-radius: 8px;
+    padding: 14px;
+    margin: 16px 0;
+    background: #f8f9fa;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 2px 6px rgba(44, 62, 80, 0.06);
+}
+
+.iotPanel .inputLabel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.iotPanel .streamInput {
+    margin: 0;
+}
+
+.iotPanel .buttonGroup {
+    margin-top: 14px;
+    margin-bottom: 0;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.iotPanel .btnAction {
+    margin-right: 0;
+}
+
+.iotStatus {
+    color: #333;
+    font-size: 14px;
+    margin-top: 6px;
+}
+
+.buttonGroup {
+    margin-bottom: 15px;
+}
+
+.btnStart {
+    background: #2ecc71;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.btnStart:hover:not(:disabled) {
+    background: #27ae60;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.btnStart:disabled {
+    background: #1e7e34;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: 0 0 12px rgba(40, 167, 69, 0.6) inset, 0 0 8px rgba(40, 167, 69, 0.4);
+    border: 2px solid #0f5c23;
+    font-weight: bold;
+}
+
+.btnStop {
+    background: #e74c3c;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 10px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.btnStop:hover:not(:disabled) {
+    background: #c0392b;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+}
+
+.btnStop:disabled {
+    background: #bd2130;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: 0 0 12px rgba(220, 53, 69, 0.6) inset, 0 0 8px rgba(220, 53, 69, 0.4);
+    border: 2px solid #8b1825;
+    font-weight: bold;
+}
+
+.videoWrapper {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 15px;
+}
+
+.videoStream {
+    display: block;
+    width: 640px; /* Tăng kích thước lên một chút cho dễ nhìn */
+    height: 480px;
+}
+
+.overlayCanvas {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, 0);
+    pointer-events: none;
+}
+
+.cameraLog {
+    position: absolute;
+    font-size: 16px;
+}
+
+.historyItem {
+    border: 1px solid #d8e1e8;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 15px;
+    transition: transform 0.2s;
+    font-size: 16px;
+    background: white;
+    box-shadow: 0 3px 8px rgba(44, 62, 80, 0.06);
+}
+
+.historyItem:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(44, 62, 80, 0.11);
+}
+
+.historyImg {
+    width: 100px;
+    height: 75px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #f0f0f0;
+}

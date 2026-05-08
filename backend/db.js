@@ -6,6 +6,11 @@ if (!USE_SQL_SERVER) {
   const sqlite3 = require('sqlite3').verbose();
   const dbPath = path.join(__dirname, 'data.sqlite');
   const db = new sqlite3.Database(dbPath);
+  db.__dbInfo = {
+    type: 'SQLite',
+    path: dbPath,
+    ready: Promise.resolve({ type: 'SQLite', path: dbPath })
+  };
 
   db.serialize(() => {
     db.run(`
@@ -70,6 +75,9 @@ if (!USE_SQL_SERVER) {
   }
 
   const poolPromise = connectWithFallback();
+  const readyPromise = poolPromise
+    .then(() => ensureSchema())
+    .then(() => ({ type: 'SQL Server', server: rawServer, database: databaseName }));
 
   function toSqlLiteral(value) {
     if (value === null || value === undefined) return 'NULL';
@@ -117,9 +125,6 @@ if (!USE_SQL_SERVER) {
     }
   }
 
-  // Initialize schema (fire-and-forget)
-  ensureSchema().catch(err => console.error('MSSQL schema init error', err));
-
   const db = {
     all: async function(sqlQuery, params, cb) {
       if (typeof params === 'function') { cb = params; params = []; }
@@ -158,6 +163,12 @@ if (!USE_SQL_SERVER) {
         cb.call(ctx, null);
       } catch (err) { cb(err); }
     }
+  };
+  db.__dbInfo = {
+    type: 'SQL Server',
+    server: rawServer,
+    database: databaseName,
+    ready: readyPromise
   };
 
   module.exports = db;

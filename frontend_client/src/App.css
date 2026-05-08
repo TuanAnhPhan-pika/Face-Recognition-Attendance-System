@@ -1,0 +1,52 @@
+.appNav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e1e8ed;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.appNav a {
+  color: #2c3e50;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1;
+  padding: 9px 12px;
+  border-radius: 6px;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.appNav a:hover {
+  color: #3498db;
+  background: rgba(52, 152, 219, 0.08);
+}
+
+.appNav a.active {
+  background: #3498db;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(52, 152, 219, 0.28);
+}
+
+.appNav a.active:hover {
+  color: #fff;
+  background: #2980b9;
+}
+
+.appMain {
+  padding: 0 20px;
+}
+
+@media (max-width: 640px) {
+  .appNav {
+    gap: 14px;
+    padding-inline: 16px;
+  }
+
+  .appMain {
+    padding: 14px;
+  }
+}
