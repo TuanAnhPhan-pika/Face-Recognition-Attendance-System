@@ -54,9 +54,46 @@
         .ranking-list .count.absent { color: #e74c3c; font-weight: bold; background: #fdedec; padding: 4px 10px; border-radius: 12px; font-size: 13px;}
         
         .hidden { display: none !important; }
+        .app-nav {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            margin: -20px -20px 20px;
+            border-bottom: 1px solid #e1e8ed;
+        }
+        .app-nav a {
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            padding: 9px 12px;
+            border-radius: 6px;
+            transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .app-nav a:hover {
+            color: #3498db;
+            background: rgba(52, 152, 219, 0.08);
+        }
+        .app-nav a.active {
+            background: #3498db;
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(52, 152, 219, 0.28);
+        }
+        .app-nav a.active:hover {
+            color: #fff;
+            background: #2980b9;
+        }
     </style>
 </head>
 <body>
+    <nav class="app-nav">
+        <a href="index.html#/">Trang chủ</a>
+        <a href="index.html#/admin">Quản lý</a>
+        <a href="dashboard.html" class="active">Dashboard</a>
+    </nav>
+
     <!-- Overlay Đăng nhập -->
     <div id="loginOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; justify-content: center; align-items: center;">
         <div style="background: white; padding: 40px; border-radius: 15px; text-align: center; width: 350px;">

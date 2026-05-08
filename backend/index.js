@@ -239,6 +239,18 @@ app.post('/api/attendance', (req, res) => {
             }
 
             if (!insertResult.inserted) {
+              if (user && user.id) {
+                io.emit('attendance', {
+                  user_id: user.id,
+                  name: user.name,
+                  time: timestamp,
+                  device_id: device_id || 'device-unknown',
+                  matched: true,
+                  distance: best ? best.distance : null,
+                  duplicate: true,
+                  message: 'Người dùng đã điểm danh hôm nay.'
+                });
+              }
               return res.json({
                 success: true,
                 attendanceId: null,
@@ -324,6 +336,15 @@ app.post('/api/attendance', (req, res) => {
             }
 
             if (!insertResult.inserted) {
+              io.emit('attendance', {
+                user_id: user.id,
+                name: user.name,
+                time: timestamp,
+                device_id: device_id || 'device-unknown',
+                matched: true,
+                duplicate: true,
+                message: 'Người dùng đã điểm danh hôm nay.'
+              });
               return res.json({
                 success: true,
                 attendanceId: null,
@@ -335,6 +356,7 @@ app.post('/api/attendance', (req, res) => {
             }
 
             const payload = {
+              user_id: user.id,
               name: user.name,
               time: timestamp,
               image: `data:image/${ext};base64,${data}`,
@@ -358,11 +380,11 @@ app.post('/api/attendance', (req, res) => {
 app.get('/api/attendance', (req, res) => {
   let q;
   if (process.env.USE_SQL_SERVER === 'true' || process.env.USE_SQL_SERVER === '1') {
-    q = `SELECT TOP (100) Attendance.id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
+    q = `SELECT TOP (100) Attendance.id, Attendance.user_id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
          FROM Attendance LEFT JOIN Users ON Attendance.user_id = Users.id
          ORDER BY Attendance.timestamp DESC`;
   } else {
-    q = `SELECT Attendance.id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
+    q = `SELECT Attendance.id, Attendance.user_id, Users.name AS name, Attendance.timestamp, Attendance.device_id, Attendance.image_path
          FROM Attendance LEFT JOIN Users ON Attendance.user_id = Users.id
          ORDER BY Attendance.timestamp DESC LIMIT 100`;
   }
@@ -370,6 +392,7 @@ app.get('/api/attendance', (req, res) => {
     if (err) return res.status(500).json({ error: 'db error' });
     const result = rows.map(r => ({
       id: r.id,
+      user_id: r.user_id,
       name: r.name || 'Unknown',
       time: formatTimestampForResponse(r.timestamp),
       image: r.image_path ? `/uploads/${r.image_path}` : null,
@@ -518,4 +541,24 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
+  const dbInfo = db.__dbInfo;
+  if (!dbInfo) {
+    console.log('[DB] Unknown database adapter');
+    return;
+  }
+
+  if (dbInfo.type === 'SQLite') {
+    console.log(`[DB] Connected: SQLite (${dbInfo.path})`);
+    return;
+  }
+
+  console.log(`[DB] Connecting: ${dbInfo.type} ${dbInfo.server}/${dbInfo.database}`);
+  dbInfo.ready
+    .then((info) => {
+      console.log(`[DB] Connected: ${info.type} ${info.server}/${info.database}`);
+    })
+    .catch((err) => {
+      const message = err && err.message ? err.message : String(err);
+      console.error(`[DB] Connection failed: ${message}`);
+    });
 });

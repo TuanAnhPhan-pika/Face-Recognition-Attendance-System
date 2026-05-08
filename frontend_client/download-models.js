@@ -14,7 +14,7 @@ const files = [
   'tiny_face_detector_model-shard1',
   'face_recognition_model-weights_manifest.json',
   'face_recognition_model-shard1',
-  'face_recognition_model-shard2', // <--- THÊM MẢNH GHÉP NÀY ĐỂ TRÁNH LỖI 404
+  'face_recognition_model-shard2', 
   'face_landmark_68_model-weights_manifest.json',
   'face_landmark_68_model-shard1'
 ];

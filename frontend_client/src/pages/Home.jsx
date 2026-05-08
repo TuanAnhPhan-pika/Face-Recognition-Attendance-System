@@ -3,26 +3,49 @@ import { io } from "socket.io-client";
 import * as faceapi from '@vladmandic/face-api';
 import styles from "../style/Home.module.css";
 
+const IOT_CAMERA_URL_KEY = "iotCameraStreamUrl";
+
+function getCookieValue(name) {
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")[1];
+}
+
+function getSavedIotCameraUrl() {
+  return localStorage.getItem(IOT_CAMERA_URL_KEY) || decodeURIComponent(getCookieValue(IOT_CAMERA_URL_KEY) || "");
+}
+
+function saveIotCameraUrl(url) {
+  localStorage.setItem(IOT_CAMERA_URL_KEY, url);
+  document.cookie = `${IOT_CAMERA_URL_KEY}=${encodeURIComponent(url)}; max-age=2592000; path=/; SameSite=Lax`;
+}
+
 export default function Home() {
   // ==========================================
   // 1. STATES & REFS (Khai báo biến)
   // ==========================================
-  const [backend, setBackend] = useState("http://localhost:3000");
+  const [backend] = useState("http://localhost:3000");
   const [deviceId, setDeviceId] = useState("cam-frontend-01");
-  const [status, setStatus] = useState("");
+  const [, setStatus] = useState("");
   const [list, setList] = useState([]);
   
   // State quản lý thông báo Camera và màu sắc của nó
   const [cameraLog, setCameraLog] = useState("");
   const [logColor, setLogColor] = useState("#333");
   
-  const [debugStatus, setDebugStatus] = useState("");
+  const [, setDebugStatus] = useState("");
   const [isCameraRunning, setIsCameraRunning] = useState(false);
+  const [iotStreamUrl, setIotStreamUrl] = useState(getSavedIotCameraUrl);
+  const [iotStreamSrc, setIotStreamSrc] = useState("");
+  const [iotStreamStatus, setIotStreamStatus] = useState("");
   const [notifications, setNotifications] = useState([]);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const overlayRef = useRef(null);
+  const iotImageRef = useRef(null);
+  const iotDetectTimerRef = useRef(null);
   const socketRef = useRef(null);
   const streamRef = useRef(null);
   const scanningRef = useRef(false);
@@ -66,8 +89,8 @@ export default function Home() {
     }
   };
 
-  const showAttendanceNotification = (name, device) => {
-    const key = `${device || ""}|${name || ""}`;
+  const showAttendanceNotification = (name, device, message = "") => {
+    const key = `${device || ""}|${name || ""}|${message || ""}`;
     const now = Date.now();
 
     if (
@@ -77,7 +100,7 @@ export default function Home() {
       return;
     lastNotifiedRef.current[key] = now;
 
-    const text = `Đã điểm danh nhân viên: ${name}`;
+    const text = message || `Đã điểm danh nhân viên: ${name}`;
     setStatus(text);
     playBeep();
 
@@ -106,7 +129,14 @@ export default function Home() {
         if (!ev) return;
         const device = ev.device_id || "";
         const name = ev.name || ev.user || ev.name;
-        showAttendanceNotification(name, device);
+        const message = ev.duplicate
+          ? `${ev.message || "Người dùng đã điểm danh hôm nay."} (${name})`
+          : "";
+        showAttendanceNotification(name, device, message);
+        if (ev.duplicate) {
+          setCameraLog(message);
+          setLogColor("#e67e22");
+        }
       } catch (e) {
         console.warn(e);
       }
@@ -120,7 +150,7 @@ export default function Home() {
         setDebugStatus("modelsLoaded=true");
         return true;
       }
-    } catch (e) {
+    } catch {
       /* ignore */
     }
 
@@ -164,6 +194,21 @@ export default function Home() {
     }
   };
 
+  const syncOverlayToMedia = (media) => {
+    const overlay = overlayRef.current;
+    if (!media || !overlay) return null;
+
+    const width = media.videoWidth || media.naturalWidth || media.clientWidth || 640;
+    const height = media.videoHeight || media.naturalHeight || media.clientHeight || 480;
+    overlay.width = width;
+    overlay.height = height;
+
+    const rect = media.getBoundingClientRect();
+    overlay.style.width = rect.width + "px";
+    overlay.style.height = rect.height + "px";
+    return { width, height };
+  };
+
   const startCamera = async () => {
     if (scanningRef.current || isCameraRunning) return;
     setIsCameraRunning(true);
@@ -183,10 +228,12 @@ export default function Home() {
         videoRef.current.srcObject = streamRef.current;
       }
       
+      stopIotStreamDisplay();
+      setIotStreamStatus("");
       setLogColor("#333");
       scanningRef.current = true;
       scanLoop();
-    } catch (err) {
+    } catch {
       setCameraLog("Lỗi: Không thể truy cập Camera.");
       setLogColor("#dc3545");
       setIsCameraRunning(false);
@@ -211,6 +258,82 @@ export default function Home() {
       overlayRef.current.width = 0;
       overlayRef.current.height = 0;
     }
+  };
+
+  const stopIotStreamDisplay = () => {
+    if (iotDetectTimerRef.current) {
+      clearInterval(iotDetectTimerRef.current);
+      iotDetectTimerRef.current = null;
+    }
+    setIotStreamSrc("");
+    const overlay = overlayRef.current;
+    if (overlay) {
+      const ctx = overlay.getContext("2d");
+      ctx?.clearRect(0, 0, overlay.width, overlay.height);
+    }
+  };
+
+  const streamUrlWithCacheBust = (url) => {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}t=${Date.now()}`;
+  };
+
+  const connectIotStream = () => {
+    const url = iotStreamUrl.trim();
+    if (!url) {
+      setIotStreamStatus("Nhập URL camera stream trước khi kết nối.");
+      return;
+    }
+    if (isCameraRunning || scanningRef.current) {
+      stopCamera();
+    }
+    saveIotCameraUrl(url);
+    setIotStreamSrc(streamUrlWithCacheBust(url));
+    setIotStreamStatus("Đang kết nối camera stream...");
+  };
+
+  const stopIotStream = () => {
+    stopIotStreamDisplay();
+    setIotStreamStatus("Camera stream đã dừng.");
+  };
+
+  const startIotFaceDetection = async () => {
+    if (!iotImageRef.current || !overlayRef.current) return;
+
+    const ok = await loadModels();
+    if (!ok) {
+      setIotStreamStatus("Không tải được mô hình AI để vẽ khung khuôn mặt.");
+      return;
+    }
+
+    if (iotDetectTimerRef.current) clearInterval(iotDetectTimerRef.current);
+    iotDetectTimerRef.current = setInterval(async () => {
+      if (!iotImageRef.current || !overlayRef.current) return;
+      try {
+        const displaySize = syncOverlayToMedia(iotImageRef.current);
+        if (!displaySize) return;
+
+        const detection = await faceapi.detectSingleFace(
+          iotImageRef.current,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 512,
+            scoreThreshold: 0.15,
+          })
+        );
+
+        const ctx = overlayRef.current.getContext("2d");
+        ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+        if (detection) {
+          const resized = faceapi.resizeResults(detection, displaySize);
+          const box = resized.box;
+          ctx.strokeStyle = "#00FF00";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(box.x, box.y, box.width, box.height);
+        }
+      } catch (err) {
+        console.warn("IoT face detection failed:", err);
+      }
+    }, 500);
   };
 
   const scanLoop = async () => {
@@ -343,6 +466,8 @@ export default function Home() {
       if (socketRef.current) socketRef.current.disconnect();
       stopCamera();
     };
+    // connectSocket reads the current backend/device values through refs at mount time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // [] đảm bảo chỉ chạy 1 lần lúc mount
 
   // ==========================================
@@ -367,8 +492,10 @@ export default function Home() {
           <input
             className={styles.textInput}
             value={backend}
+            readOnly
+            data-readonly-backend
             onChange={(e) => {
-              setBackend(e.target.value);
+              e.preventDefault();
               // Tùy chọn: Bạn có thể bỏ comment dòng dưới nếu muốn nó tự reconnect khi đổi URL
               // setTimeout(connectSocket, 500); 
             }}
@@ -407,24 +534,71 @@ export default function Home() {
           />
         </label>
 
+        <div className={styles.iotPanel}>
+          <h4 className={styles.subPanelTitle}>Camera IoT (Laptop 1)</h4>
+          <label className={styles.inputLabel}>
+            Camera Stream URL:{" "}
+            <input
+              className={styles.streamInput}
+              placeholder="http://CAMERA_LAPTOP_IP:5001/video_feed"
+              value={iotStreamUrl}
+              onChange={(e) => setIotStreamUrl(e.target.value)}
+            />
+          </label>
+          <div className={styles.buttonGroup}>
+            <button className={styles.btnAction} onClick={connectIotStream}>
+              Hiển thị stream
+            </button>
+            <button className={styles.btnAction} onClick={stopIotStream} disabled={!iotStreamSrc}>
+              Dừng stream
+            </button>
+          </div>
+          {iotStreamStatus && <div className={styles.iotStatus}>{iotStreamStatus}</div>}
+        </div>
+
         <div className={styles.videoWrapper}>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className={styles.videoStream}
-            onLoadedMetadata={handleVideoMetadata}
-          />
-          <canvas
-            ref={overlayRef}
-            className={styles.overlayCanvas}
-          />
-          <canvas
-            ref={canvasRef}
-            className={styles.hiddenCanvas}
-            style={{ display: 'none' }}
-          />
+          {iotStreamSrc ? (
+            <>
+            <img
+              ref={(node) => {
+                iotImageRef.current = node;
+                if (node) setTimeout(() => startIotFaceDetection(), 500);
+              }}
+              src={iotStreamSrc}
+              alt="Camera IoT stream"
+              crossOrigin="anonymous"
+              className={styles.videoStream}
+              onLoad={() => setIotStreamStatus("Camera IoT stream đang hiển thị.")}
+              onError={() =>
+                setIotStreamStatus("Không tải được camera stream. Kiểm tra IP, port 5001 và firewall máy camera.")
+              }
+            />
+            <canvas
+              ref={overlayRef}
+              className={styles.overlayCanvas}
+            />
+            </>
+          ) : (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={styles.videoStream}
+                onLoadedMetadata={handleVideoMetadata}
+              />
+              <canvas
+                ref={overlayRef}
+                className={styles.overlayCanvas}
+              />
+              <canvas
+                ref={canvasRef}
+                className={styles.hiddenCanvas}
+                style={{ display: 'none' }}
+              />
+            </>
+          )}
           
           {/* Cập nhật màu động cho Camera Log */}
           {cameraLog && (

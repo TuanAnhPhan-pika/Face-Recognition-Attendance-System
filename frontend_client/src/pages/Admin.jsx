@@ -2,9 +2,27 @@ import React, { useState, useRef, useEffect } from "react";
 import * as faceapi from "@vladmandic/face-api";
 import styles from "../style/Admin.module.css";
 
+const IOT_CAMERA_URL_KEY = "iotCameraStreamUrl";
+
+function getCookieValue(name) {
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")[1];
+}
+
+function getSavedIotCameraUrl() {
+  return localStorage.getItem(IOT_CAMERA_URL_KEY) || decodeURIComponent(getCookieValue(IOT_CAMERA_URL_KEY) || "");
+}
+
+function streamUrlWithCacheBust(url) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}t=${Date.now()}`;
+}
+
 const Admin = () => {
   // --- States quản lý cấu hình & dữ liệu ---
-  const [backend, setBackend] = useState("http://localhost:3000");
+  const [backend] = useState("http://localhost:3000");
   const [users, setUsers] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [log, setLog] = useState("");
@@ -26,12 +44,14 @@ const Admin = () => {
   const [capLog, setCapLog] = useState("");
   const [countdown, setCountdown] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [iotCameraUrl] = useState(getSavedIotCameraUrl);
 
   // --- Refs ---
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const overlayRef = useRef(null); 
+  const iotImageRef = useRef(null);
 
   const MODEL_PATHS = [
     "/models",
@@ -87,12 +107,31 @@ const Admin = () => {
     } else actionFunc(); 
   };
 
-  const handleTokenSubmit = () => {
+  const handleTokenSubmit = async () => {
     if (!tempToken.trim()) return setLog("Vui lòng nhập token!");
-    setToken(tempToken.trim());
-    tokenRef.current = tempToken.trim();
-    setShowTokenModal(false); setLog("");
-    if (pendingAction) { pendingAction(); setPendingAction(null); }
+    const candidateToken = tempToken.trim();
+
+    try {
+      const res = await fetch(`${backend}/api/users`, {
+        headers: { "x-admin-token": candidateToken },
+      });
+      if (!res.ok) {
+        setToken("");
+        tokenRef.current = "";
+        setLog("Token không hợp lệ!");
+        return;
+      }
+
+      setToken(candidateToken);
+      tokenRef.current = candidateToken;
+      setShowTokenModal(false);
+      setLog("");
+      if (pendingAction) { pendingAction(); setPendingAction(null); }
+    } catch {
+      setToken("");
+      tokenRef.current = "";
+      setLog("Không thể kết nối tới server để xác thực token!");
+    }
   };
 
   // ==========================================
@@ -154,7 +193,7 @@ const Admin = () => {
           faceapi.nets.faceRecognitionNet.loadFromUri(p)
         ]);
         return true;
-      } catch (e) { console.warn("Load models failed from", p); }
+      } catch { console.warn("Load models failed from", p); }
     }
     return false;
   };
@@ -185,8 +224,20 @@ const Admin = () => {
         const ok = await loadModels();
         if (!ok) throw new Error("Không tải được mô hình AI.");
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        streamRef.current = stream; videoRef.current.srcObject = stream;
+        const useIotCamera = Boolean(iotCameraUrl);
+        if (useIotCamera) {
+          setCapLog("Đang mở camera IoT đã lưu...");
+          if (!iotImageRef.current?.complete) {
+            await new Promise((resolve, reject) => {
+              if (!iotImageRef.current) return reject(new Error("Không tìm thấy camera IoT."));
+              iotImageRef.current.onload = resolve;
+              iotImageRef.current.onerror = () => reject(new Error("Không tải được camera IoT."));
+            });
+          }
+        } else {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          streamRef.current = stream; videoRef.current.srcObject = stream;
+        }
         overlayRef.current?.getContext("2d").clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
 
         for (let i = 5; i > 0; i--) {
@@ -195,11 +246,16 @@ const Admin = () => {
         }
         setCountdown(null);
 
-        const video = videoRef.current; const canvas = canvasRef.current;
-        const size = { width: video.videoWidth || 320, height: video.videoHeight || 240 };
+        const source = useIotCamera ? iotImageRef.current : videoRef.current;
+        const video = useIotCamera ? { play: () => {} } : source;
+        const canvas = canvasRef.current;
+        const size = {
+          width: source.videoWidth || source.naturalWidth || 320,
+          height: source.videoHeight || source.naturalHeight || 240
+        };
         canvas.width = size.width; canvas.height = size.height;
-        canvas.getContext("2d").drawImage(video, 0, 0, size.width, size.height);
-        video.pause(); 
+        canvas.getContext("2d").drawImage(source, 0, 0, size.width, size.height);
+        if (!useIotCamera) source.pause(); 
 
         setCapLog("Đang phân tích khuôn mặt...");
         const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
@@ -252,6 +308,7 @@ const Admin = () => {
             <h3 style={{ margin: 0 }}>🔐 Xác thực Admin</h3>
             <p style={{ margin: 0, fontSize: "14px", color: "#666" }}>Vui lòng nhập Token bảo mật.</p>
             <input type="password" placeholder="Nhập Token..." value={tempToken} onChange={e => setTempToken(e.target.value)} onKeyDown={e => e.key === "Enter" && handleTokenSubmit()} autoFocus style={{ padding: "10px", borderRadius: "6px", border: "1px solid #ccc", outline: "none" }} />
+            {log && <p style={{ margin: 0, color: "#e74c3c", fontSize: "14px", fontWeight: "bold" }}>{log}</p>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
               <button onClick={() => { setShowTokenModal(false); setPendingAction(null); }} style={{ padding: "8px 16px", cursor: "pointer", background: "#f0f0f0", border: "none", borderRadius: "4px" }}>Hủy</button>
               <button onClick={handleTokenSubmit} style={{ padding: "8px 16px", background: "#007bff", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}>Xác nhận</button>
@@ -264,7 +321,7 @@ const Admin = () => {
       <div className={styles.configSection}>
         <div className={styles.inputGroup}>
           <label>Backend URL:</label>
-          <input className={styles.textInput} value={backend} onChange={e => setBackend(e.target.value)} />
+          <input className={styles.textInput} value={backend} readOnly />
         </div>
         {token && (
            <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
@@ -316,7 +373,17 @@ const Admin = () => {
               <>
                 <input className={styles.textInputFull} placeholder="Nhập ID nhân viên" value={form.id} onChange={e => setForm({...form, id: e.target.value})} />
                 <div style={{ position: "relative", width: "320px", height: "240px", background: "#000", margin: "15px auto", borderRadius: "8px", overflow: "hidden" }}>
-                  <video ref={videoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  {iotCameraUrl ? (
+                    <img
+                      ref={iotImageRef}
+                      src={streamUrlWithCacheBust(iotCameraUrl)}
+                      crossOrigin="anonymous"
+                      alt="Camera IoT stream"
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    />
+                  ) : (
+                    <video ref={videoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  )}
                   <canvas ref={overlayRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
                   {countdown && (
                     <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", border: "3px dashed #0f0", width: "160px", height: "200px", display: "flex", justifyContent: "center", alignItems: "center" }}>
