@@ -58,12 +58,6 @@
     box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
 }
 
-.textInput[readonly] {
-    background: #eef2f5;
-    color: #7f8c8d;
-    cursor: not-allowed;
-}
-
 .authStatusWrapper {
     display: flex;
     align-items: center;

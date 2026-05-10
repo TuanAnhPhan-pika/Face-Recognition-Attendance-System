@@ -2,10 +2,10 @@
   "name": "fra-backend",
   "version": "1.0.0",
   "description": "Face Recognition Attendance System - Backend (simulated recognizer)",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

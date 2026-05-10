@@ -32,27 +32,21 @@ Kiem tra Python:
 python --version
 ```
 
-Vao thu muc camera:
+Vao root project:
 
 ```bash
-cd camera_client
+cd Face-Recognition-Attendance-System
 ```
 
-Neu dung CMD hoac PowerShell tren Windows, co the setup nhanh bang file `.bat`:
+Neu dung CMD hoac PowerShell tren Windows, chay nhanh bang file `.cmd`:
 
 ```bat
-setup_camera_windows.bat
+start_camera_stream.cmd
 ```
 
-Neu dung Git Bash tren Windows, co the dung script `.sh`:
+File nay se kiem tra Python dependency, cai `camera_client\requirements.txt` neu thieu, roi chay `py_client.py`.
 
-```bash
-bash setup_camera_windows.sh
-```
-
-Script se tao `.venv`, cai `requirements.txt`, va kiem tra import cac thu vien camera.
-
-Neu muon lam tay thi chay cac lenh ben duoi.
+Neu muon setup thu cong thi chay cac lenh ben duoi.
 
 Tao moi truong ao:
 
@@ -102,6 +96,15 @@ http://192.168.1.20:5001/video_feed
 ## 3. Chay camera client
 
 Thay `<BACKEND_IP>` bang IP cua Laptop 2.
+
+Neu dung file `.cmd`:
+
+```bat
+set BACKEND_URL=http://<BACKEND_IP>:3000
+start_camera_stream.cmd
+```
+
+Hoac chay thu cong trong `camera_client`:
 
 ```bash
 python py_client.py --backend http://<BACKEND_IP>:3000 --device iot-cam-01 --interval 2
@@ -192,10 +195,9 @@ npm start
 
 Laptop 1:
 
-```bash
-cd camera_client
-.venv\Scripts\activate
-python py_client.py --backend http://<BACKEND_IP>:3000 --device iot-cam-01 --interval 2
+```bat
+set BACKEND_URL=http://<BACKEND_IP>:3000
+start_camera_stream.cmd
 ```
 
 Laptop 3:

@@ -1,28 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import * as faceapi from "@vladmandic/face-api";
 import styles from "../style/Admin.module.css";
-
-const IOT_CAMERA_URL_KEY = "iotCameraStreamUrl";
-
-function getCookieValue(name) {
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1];
-}
-
-function getSavedIotCameraUrl() {
-  return localStorage.getItem(IOT_CAMERA_URL_KEY) || decodeURIComponent(getCookieValue(IOT_CAMERA_URL_KEY) || "");
-}
-
-function streamUrlWithCacheBust(url) {
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}t=${Date.now()}`;
-}
+import { getSavedBackendUrl, getSavedIotCameraUrl, saveBackendUrl } from "../utils/storage";
+import { streamUrlWithCacheBust } from "../utils/url";
+import { adminRequest } from "../services/api";
+import { validateAdminToken } from "../services/users.service";
+import { faceapi, areFaceModelsLoaded, loadFaceModels } from "../services/face.service";
 
 const Admin = () => {
   // --- States quản lý cấu hình & dữ liệu ---
-  const [backend] = useState("http://localhost:3000");
+  const [backend, setBackend] = useState(getSavedBackendUrl);
   const [users, setUsers] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [log, setLog] = useState("");
@@ -53,11 +39,6 @@ const Admin = () => {
   const overlayRef = useRef(null); 
   const iotImageRef = useRef(null);
 
-  const MODEL_PATHS = [
-    "/models",
-    "https://justadudewhohacks.github.io/face-api.js/models",
-  ];
-
   // ==========================================
   // HÀM HỖ TRỢ DÙNG CHUNG
   // ==========================================
@@ -67,27 +48,15 @@ const Admin = () => {
       return null;
     }
 
-    const options = {
-      method,
-      headers: { "x-admin-token": tokenRef.current.trim() }
-    };
-    if (body) {
-      options.headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify(body);
-    }
-
     try {
-      const res = await fetch(`${backend}${endpoint}`, options);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        const errMsg = data.error || data.message || `Lỗi ${res.status}`;
-        if (errMsg.includes("Không thể xác thực token!")) handleLogout();
-        throw new Error(errMsg);
-      }
-      return method === "DELETE" ? true : await res.json();
+      return await adminRequest(backend, endpoint, {
+        method,
+        token: tokenRef.current.trim(),
+        body,
+      });
     } catch (err) {
-      const isNetworkErr = ["Failed to fetch", "NetworkError"].some(e => err.message.includes(e));
-      throw new Error(isNetworkErr ? "Không thể kết nối tới server!" : err.message);
+      if (err.message.includes("Không thể xác thực token!")) handleLogout();
+      throw err;
     }
   };
 
@@ -112,9 +81,7 @@ const Admin = () => {
     const candidateToken = tempToken.trim();
 
     try {
-      const res = await fetch(`${backend}/api/users`, {
-        headers: { "x-admin-token": candidateToken },
-      });
+      const res = await validateAdminToken(backend, candidateToken);
       if (!res.ok) {
         setToken("");
         tokenRef.current = "";
@@ -132,6 +99,12 @@ const Admin = () => {
       tokenRef.current = "";
       setLog("Không thể kết nối tới server để xác thực token!");
     }
+  };
+
+  const handleBackendChange = (e) => {
+    const nextBackend = e.target.value;
+    setBackend(nextBackend);
+    saveBackendUrl(nextBackend);
   };
 
   // ==========================================
@@ -184,18 +157,8 @@ const Admin = () => {
   // FACE API & CAMERA
   // ==========================================
   const loadModels = async () => {
-    if (faceapi.nets.tinyFaceDetector.params) return true;
-    for (const p of MODEL_PATHS) {
-      try {
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(p),
-          faceapi.nets.faceLandmark68Net.loadFromUri(p),
-          faceapi.nets.faceRecognitionNet.loadFromUri(p)
-        ]);
-        return true;
-      } catch { console.warn("Load models failed from", p); }
-    }
-    return false;
+    if (areFaceModelsLoaded()) return true;
+    return Boolean(await loadFaceModels());
   };
 
   const stopStream = () => {
@@ -321,7 +284,7 @@ const Admin = () => {
       <div className={styles.configSection}>
         <div className={styles.inputGroup}>
           <label>Backend URL:</label>
-          <input className={styles.textInput} value={backend} readOnly />
+          <input className={styles.textInput} value={backend} onChange={handleBackendChange} />
         </div>
         {token && (
            <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>

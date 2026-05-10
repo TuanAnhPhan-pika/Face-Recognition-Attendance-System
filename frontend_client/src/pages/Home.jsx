@@ -1,32 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
-import * as faceapi from '@vladmandic/face-api';
 import styles from "../style/Home.module.css";
-
-const IOT_CAMERA_URL_KEY = "iotCameraStreamUrl";
-
-function getCookieValue(name) {
-  return document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1];
-}
-
-function getSavedIotCameraUrl() {
-  return localStorage.getItem(IOT_CAMERA_URL_KEY) || decodeURIComponent(getCookieValue(IOT_CAMERA_URL_KEY) || "");
-}
-
-function saveIotCameraUrl(url) {
-  localStorage.setItem(IOT_CAMERA_URL_KEY, url);
-  document.cookie = `${IOT_CAMERA_URL_KEY}=${encodeURIComponent(url)}; max-age=2592000; path=/; SameSite=Lax`;
-}
+import { COOLDOWN_MS, DEFAULT_DEVICE_ID } from "../utils/constants";
+import { getSavedBackendUrl, getSavedIotCameraUrl, saveBackendUrl, saveIotCameraUrl } from "../utils/storage";
+import { streamUrlWithCacheBust } from "../utils/url";
+import { submitAttendance } from "../services/attendance.service";
+import { faceapi, areFaceModelsLoaded, loadFaceModels } from "../services/face.service";
+import { connectAttendanceSocket } from "../services/socket.service";
 
 export default function Home() {
   // ==========================================
   // 1. STATES & REFS (Khai báo biến)
   // ==========================================
-  const [backend] = useState("http://localhost:3000");
-  const [deviceId, setDeviceId] = useState("cam-frontend-01");
+  const [backend, setBackend] = useState(getSavedBackendUrl);
+  const [deviceId, setDeviceId] = useState(DEFAULT_DEVICE_ID);
   const [, setStatus] = useState("");
   const [list, setList] = useState([]);
   
@@ -58,13 +44,6 @@ export default function Home() {
   // ==========================================
   // 2. HẰNG SỐ (Constants)
   // ==========================================
-  const MODEL_PATHS = [
-    "/models", 
-    "https://justadudewhohacks.github.io/face-api.js/models",
-  ];
-  const COOLDOWN_MS = 6000;
-  const SCAN_INTERVAL = 3000;
-
   // ==========================================
   // 3. ĐỊNH NGHĨA HÀM (Functions)
   // ==========================================
@@ -117,36 +96,33 @@ export default function Home() {
 
   const connectSocket = () => {
     if (socketRef.current) socketRef.current.disconnect();
-    socketRef.current = io(backendRef.current.trim()); // Dùng ref để lấy giá trị mới nhất an toàn
-
-    socketRef.current.on("connect", () =>
-      setStatus("Socket connected: " + socketRef.current.id),
-    );
-    socketRef.current.on("disconnect", () => setStatus("Socket disconnected"));
-    socketRef.current.on("attendance", (ev) => {
-      setList((prev) => [ev, ...prev]);
-      try {
-        if (!ev) return;
-        const device = ev.device_id || "";
-        const name = ev.name || ev.user || ev.name;
-        const message = ev.duplicate
-          ? `${ev.message || "Người dùng đã điểm danh hôm nay."} (${name})`
-          : "";
-        showAttendanceNotification(name, device, message);
-        if (ev.duplicate) {
-          setCameraLog(message);
-          setLogColor("#e67e22");
+    socketRef.current = connectAttendanceSocket(backendRef.current.trim(), {
+      onConnect: (socket) => setStatus("Socket connected: " + socket.id),
+      onDisconnect: () => setStatus("Socket disconnected"),
+      onAttendance: (ev) => {
+        setList((prev) => [ev, ...prev]);
+        try {
+          if (!ev) return;
+          const device = ev.device_id || "";
+          const name = ev.name || ev.user || ev.name;
+          const message = ev.duplicate
+            ? `${ev.message || "Người dùng đã điểm danh hôm nay."} (${name})`
+            : "";
+          showAttendanceNotification(name, device, message);
+          if (ev.duplicate) {
+            setCameraLog(message);
+            setLogColor("#e67e22");
+          }
+        } catch (e) {
+          console.warn(e);
         }
-      } catch (e) {
-        console.warn(e);
-      }
+      },
     });
   };
 
   const loadModels = async () => {
     try {
-      const already = faceapi?.nets?.tinyFaceDetector?.params;
-      if (already) {
+      if (areFaceModelsLoaded()) {
         setDebugStatus("modelsLoaded=true");
         return true;
       }
@@ -156,19 +132,12 @@ export default function Home() {
 
     setCameraLog("Đang khởi động hệ thống AI...");
     setLogColor("#333");
-    for (const p of MODEL_PATHS) {
-      try {
-        await faceapi.nets.tinyFaceDetector.loadFromUri(p);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(p);
-        await faceapi.nets.faceRecognitionNet.loadFromUri(p);
-        sessionStorage.setItem("faceapi_models_loaded", "1");
-        
-        setCameraLog(""); 
-        setDebugStatus("modelsLoaded=true,path=" + p);
-        return true;
-      } catch (e) {
-        console.warn("load failed", p, e);
-      }
+    const loadedPath = await loadFaceModels();
+    if (loadedPath) {
+      sessionStorage.setItem("faceapi_models_loaded", "1");
+      setCameraLog("");
+      setDebugStatus("modelsLoaded=true,path=" + loadedPath);
+      return true;
     }
     setCameraLog("Lỗi: Không tải được mô hình AI.");
     setLogColor("#dc3545");
@@ -273,11 +242,6 @@ export default function Home() {
     }
   };
 
-  const streamUrlWithCacheBust = (url) => {
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}t=${Date.now()}`;
-  };
-
   const connectIotStream = () => {
     const url = iotStreamUrl.trim();
     if (!url) {
@@ -295,6 +259,18 @@ export default function Home() {
   const stopIotStream = () => {
     stopIotStreamDisplay();
     setIotStreamStatus("Camera stream đã dừng.");
+  };
+
+  const handleBackendChange = (e) => {
+    const nextBackend = e.target.value;
+    setBackend(nextBackend);
+    backendRef.current = nextBackend;
+    saveBackendUrl(nextBackend);
+  };
+
+  const reconnectBackendSocket = () => {
+    if (!backendRef.current.trim()) return;
+    connectSocket();
   };
 
   const startIotFaceDetection = async () => {
@@ -392,12 +368,7 @@ export default function Home() {
             const embedding = Array.from(detection.descriptor);
 
             try {
-              const res = await fetch(currentBackend + "/api/attendance", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ embedding, device_id: currentDevice }),
-              });
-              const j = await res.json();
+              const j = await submitAttendance(currentBackend, { embedding, device_id: currentDevice });
 
               // 1. NẾU ĐỦ ĐIỀU KIỆN ĐIỂM DANH (matched && không duplicate)
               if (j.success && j.matched && j.user?.name && !j.duplicate) {
@@ -492,12 +463,10 @@ export default function Home() {
           <input
             className={styles.textInput}
             value={backend}
-            readOnly
-            data-readonly-backend
-            onChange={(e) => {
-              e.preventDefault();
-              // Tùy chọn: Bạn có thể bỏ comment dòng dưới nếu muốn nó tự reconnect khi đổi URL
-              // setTimeout(connectSocket, 500); 
+            onChange={handleBackendChange}
+            onBlur={reconnectBackendSocket}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") reconnectBackendSocket();
             }}
           />
         </label>

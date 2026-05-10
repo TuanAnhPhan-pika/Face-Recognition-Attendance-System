@@ -1,10 +1,10 @@
 const path = require('path');
-const USE_SQL_SERVER = (process.env.USE_SQL_SERVER === 'true' || process.env.USE_SQL_SERVER === '1');
+const { USE_SQL_SERVER } = require('./env');
 
 if (!USE_SQL_SERVER) {
   // Fallback to SQLite (default demo)
   const sqlite3 = require('sqlite3').verbose();
-  const dbPath = path.join(__dirname, 'data.sqlite');
+  const dbPath = path.join(__dirname, '..', 'data.sqlite');
   const db = new sqlite3.Database(dbPath);
   db.__dbInfo = {
     type: 'SQLite',
