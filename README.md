@@ -1,127 +1,94 @@
-# Face Recognition Attendance System (Mô phỏng Local)
+# Face Recognition Attendance System
 
-📌 Giới thiệu
+Hệ thống điểm danh bằng nhận diện khuôn mặt, được xây dựng để mô phỏng quy trình điểm danh tự động trong lớp học, phòng lab hoặc môi trường nội bộ. Project tách thành nhiều thành phần độc lập để dễ demo trên một máy, đồng thời có thể mở rộng sang mô hình nhiều laptop trong cùng mạng LAN.
 
-Đây là dự án mô phỏng hệ thống điểm danh bằng nhận diện khuôn mặt với kiến trúc tách biệt 3 máy:
+Mục tiêu chính của project là cho thấy cách dữ liệu khuôn mặt đi từ camera, được xử lý nhận diện ở frontend/backend, lưu vào database và cập nhật kết quả realtime lên giao diện quản lý.
 
-💻 Laptop 1 (Camera Client): Quét khuôn mặt
-💻 Laptop 2 (Backend + Database - Cloud giả lập): Xử lý & lưu dữ liệu
-💻 Laptop 3 (Frontend Client): Hiển thị kết quả realtime
+## Tổng Quan Hệ Thống
 
-🧱 Kiến trúc hệ thống
+Project gồm ba phần chính:
 
-[Camera Client] ---> [Backend + DB] ---> [Frontend Client]
-      
-                                   
-└──── HTTP API ──────┘       └── WebSocket ─────┘
+- `frontend_client/`: giao diện React dùng để điểm danh, quản lý nhân viên và xem dashboard.
+- `backend/`: server Express xử lý API, lưu dữ liệu và phát sự kiện realtime qua Socket.IO.
+- `camera_client/`: client Python tùy chọn để phát stream camera từ một máy riêng trong LAN.
 
-🔄 Luồng hoạt động
-Camera quét khuôn mặt người dùng
-Gửi dữ liệu (ảnh hoặc embedding) lên Backend
-Backend xử lý & so sánh với dữ liệu đã lưu
-Nếu match:
-Lưu vào database
-Gửi sự kiện realtime sang Frontend
-Frontend hiển thị người vừa điểm danh
+Mô hình tổng quát:
 
-⚙️ Công nghệ sử dụng
+```txt
+Camera/Webcam
+    |
+    | Ảnh hoặc embedding khuôn mặt
+    v
+Frontend / Camera Client
+    |
+    | HTTP API
+    v
+Backend + Database
+    |
+    | Socket.IO realtime event
+    v
+Frontend Dashboard
+```
 
-Backend
-Node.js (Express)
-Socket.io (Realtime)
-SQL Server
-Frontend
-ReactJS
-Socket.io-client
-Camera Client
-Web (React + webcam) hoặc Python (OpenCV)
+## Luồng Điểm Danh
 
-🗄️ Database Schema
-Users
-CREATE TABLE Users (
-    id INT PRIMARY KEY IDENTITY,
-    name NVARCHAR(100),
-    face_encoding VARBINARY(MAX)
-);
-Attendance
-CREATE TABLE Attendance (
-    id INT PRIMARY KEY IDENTITY,
-    user_id INT,
-    timestamp DATETIME,
-    device_id NVARCHAR(50),
-    FOREIGN KEY (user_id) REFERENCES Users(id)
-);
+1. Người dùng mở màn hình điểm danh trên frontend.
+2. Camera lấy hình ảnh khuôn mặt từ webcam hoặc camera stream.
+3. Frontend tạo face embedding bằng model nhận diện khuôn mặt.
+4. Embedding được gửi về backend qua API điểm danh.
+5. Backend so khớp embedding với dữ liệu khuôn mặt đã đăng ký.
+6. Nếu nhận diện thành công, backend ghi nhận điểm danh vào database.
+7. Backend phát sự kiện realtime để frontend cập nhật danh sách điểm danh.
+8. Dashboard hiển thị lịch sử và thống kê từ dữ liệu đã ghi nhận.
 
-🌐 API
-Điểm danh
-POST /api/attendance
+## Luồng Quản Lý Nhân Viên
 
-Body:
+1. Admin đăng nhập bằng `ADMIN_TOKEN`.
+2. Admin tạo mới nhân viên trên màn hình quản lý.
+3. Admin đăng ký khuôn mặt cho nhân viên bằng camera.
+4. Backend lưu thông tin nhân viên và embedding khuôn mặt.
+5. Dữ liệu này được dùng cho các lần điểm danh sau.
 
-{
-  "face_data": "...",
-  "timestamp": "...",
-  "device_id": "cam-01"
-}
-Lấy danh sách điểm danh
-GET /api/attendance
-🔌 WebSocket Events
-Server → Client
-attendance
+## Luồng Chống Điểm Danh Trùng
 
+Khi một khuôn mặt đã được nhận diện, backend kiểm tra xem nhân viên đó đã điểm danh trong ngày hiện tại chưa.
 
-Payload:
+- Nếu chưa có bản ghi trong ngày, hệ thống tạo bản ghi điểm danh mới.
+- Nếu đã có bản ghi, hệ thống không lưu thêm lần nữa và trả về trạng thái điểm danh trùng.
+- Frontend vẫn nhận thông báo realtime để hiển thị đúng trạng thái cho người dùng.
 
-{
-  "name": "Nguyen Van A",
-  "time": "2026-04-15T08:00:00",
-  "image": "..."
-}
+## Thành Phần Chính
 
-🖥️ Setup hệ thống
-🟢 Backend + DB (Laptop 2)
-npm install
-npm run dev
-Chạy SQL Server
-Import database
-Mở port (vd: 3000)
+| Thành phần | Vai trò |
+| --- | --- |
+| Frontend | Điểm danh bằng camera, quản lý nhân viên, dashboard thống kê |
+| Backend | API, xử lý nghiệp vụ, kết nối database, phát realtime event |
+| Database | Lưu nhân viên, embedding khuôn mặt và lịch sử điểm danh |
+| Camera client | Phát stream camera từ máy riêng nếu chạy mô hình nhiều thiết bị |
 
-🔵 Camera Client (Laptop 1)
-Mở webcam
-Gửi request về backend:
-http://<BACKEND_IP>:3000/api/attendance
+## Tính Năng Chính
 
-🟡 Frontend (Laptop 3)
-npm install
-npm start
-Kết nối WebSocket:
-http://<BACKEND_IP>:3000
-📡 Network
-Tất cả máy phải cùng mạng LAN
-Lấy IP backend bằng:
-ipconfig
+- Nhận diện khuôn mặt bằng embedding.
+- Đăng ký và quản lý nhân viên.
+- Điểm danh tự động qua camera.
+- Chống điểm danh trùng trong cùng một ngày.
+- Cập nhật kết quả realtime bằng Socket.IO.
+- Dashboard xem lịch sử và thống kê điểm danh.
+- Hỗ trợ demo local hoặc mô hình nhiều laptop trong LAN.
 
-Ví dụ:
+## Công Nghệ Sử Dụng
 
-192.168.1.10
-🧪 Test
-Chạy backend
-Chạy frontend
-Mở camera
-Đưa mặt vào camera
+| Phần | Công nghệ |
+| --- | --- |
+| Backend | Node.js, Express, Socket.IO |
+| Frontend | React, Vite, face-api, TensorFlow.js |
+| Database | SQLite hoặc SQL Server |
+| Camera client | Python, OpenCV, Flask |
 
+## Tài Liệu Đọc Thêm
 
-👉 Kết quả:
-
-Backend lưu DB ✅
-Frontend hiển thị realtime ✅
-🚀 Tính năng chính
-Nhận diện khuôn mặt
-Điểm danh tự động
-Realtime update (WebSocket)
-Lưu lịch sử điểm danh
-🔧 Mở rộng
-Deploy backend lên cloud (Render / Railway / VPS)
-Thêm dashboard thống kê
-Check trùng điểm danh
-Lưu ảnh lên cloud storage
+- `docs/system_structure.md`: mô tả cấu trúc hệ thống và vai trò từng module.
+- `docs/data_flow.md`: mô tả chi tiết các luồng dữ liệu chính.
+- `docs/HUONG_DAN_SETUP.md`: hướng dẫn setup nhanh trên Windows.
+- `docs/setup_project.md`: hướng dẫn setup project chi tiết hơn.
+- `docs/SETUP_CAMERA_LAN.md`: hướng dẫn chạy camera client qua LAN.
