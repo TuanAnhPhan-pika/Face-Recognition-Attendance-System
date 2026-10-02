@@ -16,7 +16,7 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve frontend and model assets
 app.use('/frontend', express.static(path.join(__dirname, '..', 'frontend_client')));
-app.use('/models', express.static(path.join(__dirname, '..', 'frontend_client', 'models')));
+app.use('/models', express.static(path.join(__dirname, '..', 'frontend_client', 'public', 'models')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use('/api/users', usersRoutes);
